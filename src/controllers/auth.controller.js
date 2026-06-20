@@ -133,6 +133,16 @@ export const verifyOTP = async (req,res) => {
      });
     }
 
+    const existingUser = await User.findOne({
+       email: userData.email,
+    });
+
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: "User already exists",
+      });
+    }
 
     const user = await User.create({
        name: userData.name,
@@ -140,11 +150,13 @@ export const verifyOTP = async (req,res) => {
        password: userData.password,
     });
 
-     
+     await redisClient.del(`register:${email}`);
+
+
 
       return res.status(200).json({
       success: true,
-      message: "OTP Verified",
+      message: "OTP Verified , Account created successfully ",
     });
 
 
