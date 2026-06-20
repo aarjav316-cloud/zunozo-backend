@@ -169,3 +169,50 @@ export const verifyOTP = async (req,res) => {
 }
 
 
+export const login = async (req,res) => {
+    try {
+
+        const { email, password } = req.body;
+
+        if (!email || !password) {
+          return res.status(400).json({
+            success: false,
+            message: "Email and password are required",
+          });
+        }
+
+        const user = await User.findOne({ email });
+
+        if (!user) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid credentials",
+          });
+        }
+
+        const isPasswordCorrect = await bcrypt.compare(
+          password,
+          user.password
+        );
+        
+        if (!isPasswordCorrect) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid credentials",
+          });
+        }
+
+        return res.status(200).json({
+           success: true,
+           message: "Login successful",
+        });
+        
+    } catch (error) {
+         console.log(error);
+
+         return res.status(500).json({
+            success: false,
+            message: "Server Error",
+         });
+    }
+}
