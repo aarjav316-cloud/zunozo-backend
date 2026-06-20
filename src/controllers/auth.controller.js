@@ -101,4 +101,56 @@ export const register = async (req, res) => {
 
 
 
+export const verifyOTP = async (req,res) => {
+    try {
+
+        const { email, otp } = req.body;
+
+        if (!email || !otp) {
+           return res.status(400).json({
+           success: false,
+           message: "Email and OTP are required",
+      });
+    }
+
+    const pendingUser = await redisClient.get(
+      `register:${email}`
+    );
+
+    if (!pendingUser) {
+        return res.status(400).json({
+           success: false,
+           message: "OTP expired or user not found",
+       });
+    };
+
+    const userData = JSON.parse(pendingUser);
+
+    if (userData.otp !== otp) {
+      return res.status(400).json({
+       success: false,
+       message: "Invalid OTP",
+     });
+    }
+
+
+    const user = await User.create({
+       name: userData.name,
+       email: userData.email,
+       password: userData.password,
+    });
+
+     
+
+      return res.status(200).json({
+      success: true,
+      message: "OTP Verified",
+    });
+
+
+        
+    } catch (error) {
+        
+    }
+}
 
