@@ -43,9 +43,6 @@ export const register = async (req, res) => {
     const otp = generateOTP();
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    console.log("Hashed Password:", hashedPassword);
-
-    console.log(otp);
 
     const userData = {
           name,
@@ -66,8 +63,6 @@ export const register = async (req, res) => {
     );
 
     const redisData = await redisClient.get(`register:${email}`);
-
-    console.log("Redis Data:", JSON.parse(redisData));
 
     await sendEmail({
        to: email,
@@ -162,7 +157,15 @@ export const verifyOTP = async (req,res) => {
 
         
     } catch (error) {
+
+         console.log(error);
+
+        return res.status(500).json({
+          success: false,
+          message: "Server Error",
+        });
         
     }
 }
+
 
