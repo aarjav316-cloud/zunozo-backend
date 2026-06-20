@@ -28,6 +28,18 @@ export const register = async (req, res) => {
         message: "User already exists",
       });
     }
+   
+       const existingPendingUser = await redisClient.get(
+       `register:${email}`
+   );
+   
+   if (existingPendingUser) {
+       return res.status(400).json({
+         success: false,
+         message: "OTP already sent. Please verify your email first.",
+        });
+    }
+
     const otp = generateOTP();
 
     const hashedPassword = await bcrypt.hash(password, 10);
