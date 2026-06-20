@@ -4,6 +4,8 @@ import bcrypt from 'bcryptjs'
 import { redisClient } from "../config/redis.js";
 import sendEmail from "../services/email.service.js";
 
+import { generateAccessToken , generateRefreshToken } from "../utils/generateToken.js";
+
 
 
 export const register = async (req, res) => {
@@ -202,9 +204,41 @@ export const login = async (req,res) => {
           });
         }
 
+        const accessToken = generateAccessToken(user);
+        const refreshToken = generateRefreshToken(user);
+
+
+        user.refreshToken = refreshToken;
+
+        await user.save({
+             validateBeforeSave: false,
+        });
+
+        const cookieOptions = {
+          httpOnly: true,
+          secure: false,
+          sameSite: "strict",
+        };
+
+        res.cookie("accessToken", accessToken, {
+            ...cookieOptions,
+            maxAge: 15 * 60 * 1000,
+        });
+        
+        res.cookie("refreshToken", refreshToken, {
+            ...cookieOptions,
+            maxAge: 7 * 24 * 60 * 60 * 1000,
+        });
+
         return res.status(200).json({
            success: true,
            message: "Login successful",
+
+           user: {
+             id: user._id,
+             name: user.name,
+             email: user.email,
+           },
         });
         
     } catch (error) {
@@ -216,3 +250,10 @@ export const login = async (req,res) => {
          });
     }
 }
+
+
+
+
+
+
+
