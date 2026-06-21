@@ -257,9 +257,7 @@ export const login = async (req,res) => {
 export const logout = async (req, res) => {
   try {
 
-    const { email } = req.body;
-
-    const user = await User.findOne({ email });
+    const user = await User.findById(req.user._id);
 
     if (!user) {
       return res.status(404).json({
@@ -268,10 +266,10 @@ export const logout = async (req, res) => {
       });
     }
 
-    user.refreshToken = undefined;
+    user.refreshToken = null;
 
     await user.save({
-      validateBeforeSave: null,
+      validateBeforeSave: false,
     });
 
     res.clearCookie("accessToken");
@@ -367,3 +365,24 @@ export const refreshAccessToken = async (req, res) => {
 };
 
 
+export const getMe = async (req, res) => {
+  try {
+
+    return res.status(200).json({
+      success: true,
+      user: {
+        id: req.user._id,
+        name: req.user.name,
+        email: req.user.email,
+      },
+    });
+
+  } catch (error) {
+    console.log(error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+    });
+  }
+};
