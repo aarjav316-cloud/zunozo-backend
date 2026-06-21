@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs'
 import { redisClient } from "../config/redis.js";
 import sendEmail from "../services/email.service.js";
 
+import jwt from "jsonwebtoken";
 import { generateAccessToken , generateRefreshToken } from "../utils/generateToken.js";
 
 
@@ -251,6 +252,7 @@ export const login = async (req,res) => {
     }
 }
 
+//logout controller v1
 
 export const logout = async (req, res) => {
   try {
@@ -291,5 +293,60 @@ export const logout = async (req, res) => {
 };
 
 
+export const refreshAccessToken = async (req, res) => {
+  try {
 
+    const refreshToken = req.cookies.refreshToken;
+
+    if (!refreshToken) {
+          return res.status(401).json({
+            success: false,
+            message: "Refresh token missing",
+        });
+    }
+
+    const decoded = jwt.verify(
+       refreshToken,
+       process.env.JWT_REFRESH_SECRET
+    );
+
+    const user = await User.findById(decoded.id);
+
+    if (
+      !user ||
+      user.refreshToken !== refreshToken
+    ){
+        return res.status(401).json({
+          success: false,
+          message: "Invalid refresh token",
+        });
+    }
+
+    const newAccessToken = generateAccessToken(user);
+
+    res.cookie(
+      "accessToken",
+      newAccessToken,
+      {
+        httpOnly: true,
+        secure: false,
+        sameSite: "strict",
+        maxAge: 15 * 60 * 1000,
+      }
+    );
+
+    return res.status(200).json({
+       success: true,
+       message: "Access token refreshed",
+    });
+
+  } catch (error) {
+    console.log(error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+    });
+  }
+};
 

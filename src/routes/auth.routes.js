@@ -8,5 +8,7 @@ router.post("/verify-otp" , verifyOTP);
 router.post("/login", login);
 router.post("/logout", logout);
 
+router.post("/refresh-token", refreshAccessToken);
+
 
 export default router;
