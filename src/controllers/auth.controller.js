@@ -271,7 +271,7 @@ export const logout = async (req, res) => {
     user.refreshToken = undefined;
 
     await user.save({
-      validateBeforeSave: false,
+      validateBeforeSave: null,
     });
 
     res.clearCookie("accessToken");
@@ -324,6 +324,14 @@ export const refreshAccessToken = async (req, res) => {
 
     const newAccessToken = generateAccessToken(user);
 
+    const newRefreshToken = generateRefreshToken(user);
+
+    user.refreshToken = newRefreshToken;
+
+    await user.save({
+      validateBeforeSave: false,
+    });
+
     res.cookie(
       "accessToken",
       newAccessToken,
@@ -335,9 +343,17 @@ export const refreshAccessToken = async (req, res) => {
       }
     );
 
+
+    res.cookie("refreshToken", newRefreshToken, {
+      httpOnly: true,
+      secure: false,
+      sameSite: "strict",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
     return res.status(200).json({
        success: true,
-       message: "Access token refreshed",
+       message: "Tokens refreshed successfully",
     });
 
   } catch (error) {
