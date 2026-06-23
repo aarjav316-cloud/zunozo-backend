@@ -1,5 +1,6 @@
 import express from "express";
 import {
+  forgotpassword,
   getMe,
   googleCallback,
   login,
@@ -25,6 +26,8 @@ router.post("/login", loginLimiter, login);
 router.post("/logout", protect, logout);
 
 router.post("/refresh-token", refreshAccessToken);
+
+router.post("/forgot-password" , forgotpassword)
 
 router.get(
   "/google",
