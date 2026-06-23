@@ -3,6 +3,8 @@ import {Strategy as GoogleStrategy} from "passport-google-oauth20"
 
 import User from "../models/user.model.js";
 
+        console.log(process.env.GOOGLE_CLIENT_ID);
+        console.log(process.env.GOOGLE_CLIENT_SECRET);
 
 
 passport.use(
@@ -25,6 +27,11 @@ passport.use(
     ) => {
       try {
 
+        console.log("GOOGLE CALLBACK HIT");
+        console.log(profile.displayName);
+        console.log(profile.emails[0].value);
+
+
         let user = await User.findOne({
           email: profile.emails[0].value,
         });
@@ -41,6 +48,7 @@ passport.use(
           });
 
         }
+
 
         return done(null, user);
 

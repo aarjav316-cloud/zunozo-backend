@@ -389,7 +389,69 @@ export const getMe = async (req, res) => {
 
 
 export const googleCallback = async(req,res) => {
-  
+  try {
+
+     const user = req.user;
+
+    const accessToken =
+      generateAccessToken(user);
+
+    const refreshToken =
+      generateRefreshToken(user);
+
+    user.refreshToken =
+      refreshToken;
+
+
+         await user.save({
+      validateBeforeSave: false,
+    });
+
+    const cookieOptions = {
+      httpOnly: true,
+      secure: false,
+      sameSite: "strict",
+    };
+
+    res.cookie(
+      "accessToken",
+      accessToken,
+      {
+        ...cookieOptions,
+        maxAge: 15 * 60 * 1000,
+      }
+    );
+
+    res.cookie(
+      "refreshToken",
+      refreshToken,
+      {
+        ...cookieOptions,
+        maxAge:
+          7 * 24 * 60 * 60 * 1000,
+      }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message:
+        "Google Login Successful",
+
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+      },
+    });
+    
+  } catch (error) {
+        console.log(error);
+
+       return res.status(500).json({
+         success: false,
+         message: "Server Error",
+       });
+  }
 }
 
 
