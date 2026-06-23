@@ -7,12 +7,15 @@ import authRoutes from "./routes/auth.routes.js";
 import connectDb from "./config/db.js";
 import { connectRedis } from "./config/redis.js";
 
+import passport from "./config/passport.js"
+
 dotenv.config();
 
 const app = express();
 
 app.use(express.json());
 app.use(cookieParser());
+app.use(passport.initialize());
 app.use("/api/v1/auth" , authRoutes);
 
 app.get("/", (req, res) => {

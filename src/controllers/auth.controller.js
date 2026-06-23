@@ -388,7 +388,9 @@ export const getMe = async (req, res) => {
 };
 
 
-
+export const googleCallback = async(req,res) => {
+  
+}
 
 
 
