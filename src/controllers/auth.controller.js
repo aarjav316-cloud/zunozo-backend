@@ -514,21 +514,83 @@ export const forgotpassword = async(req,res) => {
 }
 
 
+export const resetPassword = async(req,res) => {
+    try {
+
+       const {email , otp , newPassword} = req.body;
+
+       if (
+         !email ||
+         !otp ||
+         !newPassword
+       ) {
+         return res.status(400).json({
+           success: false,
+           message: "All fields are required",
+        });
+       }
+
+       const storedOTP = await redisClient.get(`forgot-password:${email}`);
+
+       if (!storedOTP) {
+        return res.status(400).json({
+          success: false,
+          message: "OTP expired",
+        });
+      }
+
+      if (
+        storedOTP.toString() !==
+        otp.toString()
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid OTP",
+        });
+      }
+
+      const user =
+        await User.findOne({
+         email,
+      });
+
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: "User not found",
+        });
+      }
+
+      const hashedPassword =
+        await bcrypt.hash(
+          newPassword,
+          10
+      );
+
+      user.password = hashedPassword;
+
+      await user.save();
+
+      await redisClient.del(`forgot-password:${email}`);
+
+      return res.status(200).json({
+        success: true,
+        message:"Password reset successfully",
+      });
+      
+    } catch (error) {
+      
+    }
+}
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+export const changePassword = async (req,res) => {
+  try {
+    
+  } catch (error) {
+     
+  }
+}
 
 
 

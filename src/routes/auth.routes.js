@@ -1,5 +1,6 @@
 import express from "express";
 import {
+  changePassword,
   forgotpassword,
   getMe,
   googleCallback,
@@ -7,6 +8,7 @@ import {
   logout,
   refreshAccessToken,
   register,
+  resetPassword,
   verifyOTP,
 } from "../controllers/auth.controller.js";
 
@@ -28,6 +30,10 @@ router.post("/logout", protect, logout);
 router.post("/refresh-token", refreshAccessToken);
 
 router.post("/forgot-password" , forgotpassword)
+
+router.post("/reset-password" , resetPassword)
+
+router.post("/change-password" , protect , changePassword )
 
 router.get(
   "/google",
