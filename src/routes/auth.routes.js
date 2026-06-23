@@ -8,14 +8,20 @@ import {
   register,
   verifyOTP,
 } from "../controllers/auth.controller.js";
+
+import { loginLimiter , registerLimiter , otpLimiter } from "../middleware/rateLimiter.js";
+
 import { protect } from "../middleware/middleware.js";
 import passport from "passport";
 
 const router = express.Router();
 
-router.post("/register", register);
-router.post("/verify-otp", verifyOTP);
-router.post("/login", login);
+router.post("/register", registerLimiter ,  register);
+
+router.post("/verify-otp", otpLimiter, verifyOTP);
+
+router.post("/login", loginLimiter, login);
+
 router.post("/logout", protect, logout);
 
 router.post("/refresh-token", refreshAccessToken);
