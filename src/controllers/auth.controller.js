@@ -586,6 +586,59 @@ export const resetPassword = async(req,res) => {
 
 export const changePassword = async (req,res) => {
   try {
+
+    const {oldPassword , newPassword} = req.body;
+
+    if (!oldPassword || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "All fields are required",
+      });
+    }
+
+     const user =  await User.findById( req.user._id);
+
+     const isPasswordCorrect =  await bcrypt.compare(oldPassword,user.password );
+
+     if (!isPasswordCorrect) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Old password is incorrect",
+        });
+     }
+
+     if (oldPassword ===  newPassword) {
+
+       return res.status(400).json({
+         success: false,
+         message:
+           "New password must be different",
+       });
+
+     }
+
+     const hashedPassword = await bcrypt.hash(newPassword , 10);
+
+     user.password = hashedPassword;
+
+     await user.save({
+      validateBeforeSave: false,
+     });
+
+      res.clearCookie(
+        "accessToken"
+      );
+      
+      res.clearCookie(
+        "refreshToken"
+      );
+
+      return res.status(200).json({
+        success: true,
+        message:
+          "Password changed successfully. Please login again.",
+      });
     
   } catch (error) {
      
