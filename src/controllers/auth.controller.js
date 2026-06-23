@@ -455,7 +455,63 @@ export const googleCallback = async(req,res) => {
 }
 
 
+export const forgotpassword = async(req,res) => {
+  try {
 
+    const {email} = req.body;
+
+    if(!email){
+      return res.status(400).json({
+        success:false,
+        message:"email is required"
+      })
+    }
+
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const otp = generateOTP();
+
+    console.log(otp);
+
+
+    await redisClient.set(
+      `forgot-password:${email}`,
+      otp,
+      {
+        EX: 300,
+      }
+    );
+
+    await sendEmail({
+         to: email,
+       
+         subject: "Reset Password OTP",
+       
+         html: `
+           <h2>Password Reset Request</h2>
+       
+           <p>Your OTP is:</p>
+       
+           <h1>${otp}</h1>
+       
+           <p>This OTP will expire in 5 minutes.</p>
+         `,
+    });
+    
+  } catch (error) {
+     return res.json({
+       success:false,
+       message:error.message
+     })
+  }
+}
 
 
 
