@@ -98,7 +98,6 @@ export const register = async (req, res) => {
 };
 
 
-
 export const verifyOTP = async (req,res) => {
     try {
 
