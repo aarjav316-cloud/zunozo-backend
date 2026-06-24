@@ -36,6 +36,13 @@ passport.use(
           email: profile.emails[0].value,
         });
 
+         if (user && user.isDeleted) {
+           return done(
+             new Error("This account has been deleted"),
+             null
+           );
+          }
+
         if (!user) {
 
           user = await User.create({

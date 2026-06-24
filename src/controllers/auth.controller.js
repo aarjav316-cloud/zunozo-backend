@@ -170,6 +170,64 @@ export const verifyOTP = async (req,res) => {
     }
 }
 
+export const resendOTP = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required",
+      });
+    }
+
+    const pendingUser = await redisClient.get(`register:${email}`);
+
+    if (!pendingUser) {
+      return res.status(400).json({
+        success: false,
+        message: "Registration session expired. Please sign up again.",
+      });
+    }
+
+    const userData = JSON.parse(pendingUser);
+
+    const newOtp = generateOTP();
+
+    userData.otp = newOtp;
+
+    await redisClient.set(
+      `register:${email}`,
+      JSON.stringify(userData),
+      {
+        EX: 300,
+      }
+    );
+
+    await sendEmail({
+      to: email,
+      subject: "Your New OTP for Zunozo",
+      html: `
+        <h2>Zunozo Email Verification</h2>
+        <p>Your new OTP is:</p>
+        <h1>${newOtp}</h1>
+        <p>This OTP will expire in 5 minutes.</p>
+      `,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "OTP resent successfully",
+    });
+  } catch (error) {
+    console.log("Resend OTP Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+    });
+  }
+};
 
 export const login = async (req,res) => {
     try {
