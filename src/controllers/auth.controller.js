@@ -185,17 +185,10 @@ export const login = async (req,res) => {
 
         const user = await User.findOne({ email });
 
-        if (!user) {
+        if (!user || user.isDeleted) {
           return res.status(400).json({
             success: false,
-            message: "Invalid credentials",
-          });
-        }
-
-        if (user.isDeleted) {
-          return res.status(403).json({
-            success: false,
-            message: "This account has been deleted",
+            message: "Account not found",
           });
         }
 
@@ -318,6 +311,7 @@ export const refreshAccessToken = async (req, res) => {
 
     if (
       !user ||
+      user.isDeleted ||
       user.refreshToken !== refreshToken
     ){
         return res.status(401).json({
@@ -398,6 +392,13 @@ export const googleCallback = async(req,res) => {
   try {
 
      const user = req.user;
+
+     if(!user || user.isDeleted){
+      return res.status(403).json({
+        success:false,
+        message:"this account has been deleted"
+      })
+     }
 
     const accessToken =
       generateAccessToken(user);

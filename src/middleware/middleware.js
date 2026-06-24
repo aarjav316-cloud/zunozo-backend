@@ -20,13 +20,6 @@ export const protect = async (req, res, next) => {
 
     const user = await User.findById(decoded.id);
 
-    if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: "User not found",
-      });
-    }
-
     if (!user || user.isDeleted) {
       return res.status(401).json({
         success: false,
@@ -58,3 +51,5 @@ export const protect = async (req, res, next) => {
     });
   }
 };
+
+
