@@ -192,6 +192,13 @@ export const login = async (req,res) => {
           });
         }
 
+        if (user.isDeleted) {
+          return res.status(403).json({
+            success: false,
+            message: "This account has been deleted",
+          });
+        }
+
         const isPasswordCorrect = await bcrypt.compare(
           password,
           user.password

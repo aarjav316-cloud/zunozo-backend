@@ -27,6 +27,13 @@ export const protect = async (req, res, next) => {
       });
     }
 
+    if (!user || user.isDeleted) {
+      return res.status(401).json({
+        success: false,
+        message: "User not found or account deleted",
+      });
+    }
+
     req.user = user;
 
     next();
