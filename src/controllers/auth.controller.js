@@ -645,6 +645,64 @@ export const changePassword = async (req,res) => {
 }
 
 
+export const deleteAccount = async (req,res) => {
+  try {
 
+    const {password} = req.body;
+
+    if (!password) {
+      return res.status(400).json({
+        success: false,
+        message: "Password is required",
+      });
+    }
+
+    const user = await User.findById(req.user._id);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const isPasswordCorrect = await bcrypt.compare(
+      password,
+      user.password
+    );
+    
+    if (!isPasswordCorrect) {
+      return res.status(400).json({
+        success: false,
+        message: "Incorrect password",
+      });
+    }
+
+    user.isDeleted = true;
+    user.deletedAt = new Date();
+    user.refreshToken = null;
+
+    await user.save({
+      validateBeforeSave: false,
+    });
+
+    res.clearCookie("accessToken");
+    res.clearCookie("refreshToken");
+
+
+    return res.status(200).json({
+      success: true,
+      message: "Account deleted successfully",
+    });
+    
+  } catch (error) {
+    console.log(error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+    });
+  }
+}
 
 

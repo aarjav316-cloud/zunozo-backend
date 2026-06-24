@@ -1,6 +1,7 @@
 import express from "express";
 import {
   changePassword,
+  deleteAccount,
   forgotpassword,
   getMe,
   googleCallback,
@@ -33,7 +34,9 @@ router.post("/forgot-password" , forgotpassword)
 
 router.post("/reset-password" , resetPassword)
 
-router.post("/change-password" , protect , changePassword )
+router.post("/change-password" , protect , changePassword)
+
+router.delete("/delete-account" , protect , deleteAccount)
 
 router.get(
   "/google",
