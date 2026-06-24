@@ -432,16 +432,7 @@ export const googleCallback = async (req, res) => {
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
-    return res.status(200).json({
-      success: true,
-      message: "Google Login Successful",
-
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-      },
-    });
+    return res.redirect("http://localhost:5173/");
   } catch (error) {
     console.log(error);
 
