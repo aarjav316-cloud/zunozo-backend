@@ -134,11 +134,23 @@ export const verifyOTP = async (req, res) => {
       password: userData.password,
     });
 
+
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
+    
+    res.cookie("refreshToken", refreshToken, cookieOptions);
+
     await redisClient.del(`register:${email}`);
 
     return res.status(200).json({
       success: true,
       message: "OTP Verified , Account created successfully ",
+      accessToken,
+      user:{
+        id:user._id,
+        name:user.name,
+        email:user.email 
+      }
     });
   } catch (error) {
     console.log(error);
@@ -204,6 +216,7 @@ export const resendOTP = async (req, res) => {
     });
   }
 };
+
 
 export const login = async (req, res) => {
   try {
