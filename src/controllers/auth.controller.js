@@ -134,18 +134,37 @@ export const verifyOTP = async (req, res) => {
       password: userData.password,
     });
 
-
+    
     const accessToken = generateAccessToken(user);
     const refreshToken = generateRefreshToken(user);
-    
-    res.cookie("refreshToken", refreshToken, cookieOptions);
+
+    user.refreshToken = refreshToken;
+
+    await user.save({
+      validateBeforeSave: false,
+    });
+
+    const cookieOptions = {
+      httpOnly: true,
+      secure: false,
+      sameSite: "strict",
+    };
+
+    res.cookie("accessToken", accessToken, {
+      ...cookieOptions,
+      maxAge: 15 * 60 * 1000,
+    });
+
+    res.cookie("refreshToken", refreshToken, {
+      ...cookieOptions,
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
 
     await redisClient.del(`register:${email}`);
 
     return res.status(200).json({
       success: true,
       message: "OTP Verified , Account created successfully ",
-      accessToken,
       user:{
         id:user._id,
         name:user.name,
