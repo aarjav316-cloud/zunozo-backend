@@ -435,7 +435,7 @@ export const googleCallback = async (req, res) => {
       return res.status(403).json({
         success: false,
         message: "this account has been deleted",
-      });
+      })
     }
 
     const accessToken = generateAccessToken(user);
@@ -497,7 +497,7 @@ export const forgotpassword = async (req, res) => {
 
     const otp = generateOTP();
 
-    console.log(otp);
+    
 
     await redisClient.set(`forgot-password:${email}`, otp, {
       EX: 300,
