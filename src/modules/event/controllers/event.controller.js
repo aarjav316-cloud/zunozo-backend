@@ -129,7 +129,9 @@ export const updateEvent = async (req,res) => {
     }
 
     // Send event back for review
-    updateData.status = "PENDING_REVIEW";
+    if (event.status === "APPROVED") {
+       updateData.status = "PENDING_REVIEW";
+    }
 
     // Update event
     const updatedEvent = await Event.findByIdAndUpdate(
@@ -157,3 +159,43 @@ export const updateEvent = async (req,res) => {
         });
     }
 }
+
+
+export const deleteEvent = async (req,res) => {
+    try {
+
+    const { eventId } = req.params;
+
+    const event = await Event.findOne({
+      _id: eventId,
+      organizer: req.user._id,
+      isDeleted: false,
+    });
+
+    if (!event) {
+      return res.status(404).json({
+        success: false,
+        message: "Event not found.",
+      });
+    }
+
+    event.isDeleted = true;
+
+    await event.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Event deleted successfully.",
+    });
+
+        
+    } catch (error) {
+        console.error("Delete Event Error: " , error);
+
+        return res.status(500).json({
+            success:false,
+            message:"Internal Server Error",
+        })
+    }
+}
+
