@@ -46,7 +46,9 @@ export const getMyEvents = async (req,res) => {
         const events = await Event.find({
             organizer:organizerId,
             isDeleted:false
-        }).sort({createdAt:-1});
+        })
+        .select("title slug coverImage category startDate status createdAt venue.city")
+        .sort({createdAt:-1});
 
         return res.status(200).json({
             success: true,
@@ -64,3 +66,38 @@ export const getMyEvents = async (req,res) => {
     }
 }
 
+
+export const getEventById = async (req,res) => {
+    try {
+
+        const {eventId} = req.params;
+
+        const organizerId = req.user._id;
+
+        const event = await Event.findOne({
+            _id:eventId,
+            organizer:organizerId,
+            isDeleted:false,
+        });
+
+        if(!event){
+            return  res.status(404).json({
+                success:false,
+                message:"Event not found. ",
+            })
+        }
+
+        return res.status(200).json({
+            success:true,
+            event,
+        });
+        
+    } catch (error) {
+        console.error("Get Event Error:", error);
+
+        return res.status(500).json({
+          success: false,
+          message: "Internal Server Error",
+        });
+    }
+}
