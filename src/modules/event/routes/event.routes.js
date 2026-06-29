@@ -1,10 +1,11 @@
 import express from 'express'
 
-import { createEvent, getEventById, getMyEvents } from '../controllers/event.controller.js'
+import { createEvent, getEventById, getMyEvents, updateEvent } from '../controllers/event.controller.js'
 import { protect  } from '../../../middleware/middleware.js'
 import validate from '../../../middleware/validate.middleware.js'
 import { createEventSchema } from '../validation/event.validation.js'
 import { authorizeRoles } from '../../../middleware/rbac.middleware.js'
+import { updateEventSchema } from '../validation/updateEventSchema.js'
 
 
 const router = express.Router();
@@ -30,6 +31,21 @@ router.get(
     authorizeRoles("ORGANIZER"),
     getEventById
 )
+
+router.patch(
+    "/:eventId",
+    protect,
+    authorizeRoles("ORGANIZER"),
+    validate(updateEventSchema),
+    updateEvent
+)
+
+router.delete(
+  "/:eventId",
+  protect,
+  authorizeRoles("ORGANIZER"),
+  deleteEvent
+);
 
 export default router;
 

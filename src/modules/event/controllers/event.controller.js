@@ -179,9 +179,9 @@ export const deleteEvent = async (req,res) => {
       });
     }
 
-    event.isDeleted = true;
-
-    await event.save();
+     await Event.findByIdAndUpdate(eventId, {
+      isDeleted: true,
+    });
 
     return res.status(200).json({
       success: true,
@@ -198,4 +198,7 @@ export const deleteEvent = async (req,res) => {
         })
     }
 }
+
+
+
 
