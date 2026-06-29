@@ -22,3 +22,7 @@ const generateSlug = async (title) => {
 };
 
 export default generateSlug;
+
+
+
+
