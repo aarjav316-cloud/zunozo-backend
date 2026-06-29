@@ -101,3 +101,59 @@ export const getEventById = async (req,res) => {
         });
     }
 }
+
+
+export const updateEvent = async (req,res) => {
+    try {
+
+    const { eventId } = req.params;
+    const updateData = req.body;
+
+    // Find organizer's event
+    const event = await Event.findOne({
+      _id: eventId,
+      organizer: req.user._id,
+      isDeleted: false,
+    });
+
+    if (!event) {
+      return res.status(404).json({
+        success: false,
+        message: "Event not found.",
+      });
+    }
+
+    // Generate new slug if title changes
+    if (updateData.title && updateData.title !== event.title) {
+      updateData.slug = await generateSlug(updateData.title);
+    }
+
+    // Send event back for review
+    updateData.status = "PENDING_REVIEW";
+
+    // Update event
+    const updatedEvent = await Event.findByIdAndUpdate(
+      eventId,
+      updateData,
+      {
+        new: true,
+        runValidators: true,
+      }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Event updated successfully and sent for review.",
+      event: updatedEvent,
+    });
+
+        
+    } catch (error) {
+        console.error("Update Event Error:", error);
+
+        return res.status(500).json({
+          success: false,
+          message: "Internal Server Error",
+        });
+    }
+}
