@@ -38,3 +38,29 @@ export const createEvent = async (req, res) => {
 };
 
 
+export const getMyEvents = async (req,res) => {
+    try {
+
+        const organizerId = req.user._id;
+
+        const events = await Event.find({
+            organizer:organizerId,
+            isDeleted:false
+        }).sort({createdAt:-1});
+
+        return res.status(200).json({
+            success: true,
+            count: events.length,
+            events,
+        });
+        
+    } catch (error) {
+        console.log("Get My events error : " , error)
+
+        return res.status(500).json({
+            success:false,
+            message:"Internal Server Error",
+        })
+    }
+}
+
