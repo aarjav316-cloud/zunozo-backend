@@ -1,6 +1,6 @@
 import express from 'express'
 
-import { createEvent } from '../controllers/event.controller.js'
+import { createEvent, getMyEvents } from '../controllers/event.controller.js'
 import { protect  } from '../../../middleware/middleware.js'
 import validate from '../../../middleware/validate.middleware.js'
 import { createEventSchema } from '../validation/event.validation.js'
@@ -16,6 +16,15 @@ router.post(
     validate(createEventSchema),
     createEvent
 )
+
+router.get(
+    "/my-events",
+    protect,
+    authorizeRoles("ORGANIZER"),
+    getMyEvents
+)
+
+
 
 export default router;
 
