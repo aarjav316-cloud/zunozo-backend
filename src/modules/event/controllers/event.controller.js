@@ -228,3 +228,45 @@ export const getPendingEvents = async(req,res) => {
 }
 
 
+export const reviweEvent = async (req,res) => {
+    try {
+
+    const { eventId } = req.params;
+    const { status, reviewComment } = req.body;
+
+    const event = await Event.findOne({
+      _id: eventId,
+      isDeleted: false,
+    });
+
+    if (!event) {
+      return res.status(404).json({
+        success: false,
+        message: "Event not found.",
+      });
+    }
+
+    event.status = status;
+    event.reviewComment = reviewComment || "";
+    event.reviewedBy = req.user._id;
+    event.reviewedAt = new Date();
+
+    await event.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Event reviewed successfully.",
+      event,
+    });
+        
+    } catch (error) {
+        console.error("Review Event Error:", error);
+
+        return res.status(500).json({
+          success: false,
+          message: "Internal Server Error",
+        });
+    }
+}
+
+

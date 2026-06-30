@@ -156,7 +156,7 @@ const eventSchema = new mongoose.Schema({
     status: {
       type: String,
       enum: [
-        "DRAFT",
+        
         "PENDING_REVIEW",
         "APPROVED",
         "REJECTED",
@@ -164,7 +164,7 @@ const eventSchema = new mongoose.Schema({
         "CANCELLED",
         "COMPLETED",
       ],
-      default: "DRAFT",
+      default: "PENDING_REVIEW",
     },
 
     reviewedBy: {
