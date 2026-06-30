@@ -228,7 +228,7 @@ export const getPendingEvents = async(req,res) => {
 }
 
 
-export const reviweEvent = async (req,res) => {
+export const reviewEvent = async (req,res) => {
     try {
 
     const { eventId } = req.params;
@@ -270,3 +270,31 @@ export const reviweEvent = async (req,res) => {
 }
 
 
+export const getApprovedEvents = async (req,res) => {
+    try {
+
+        const events = await Event.find({
+            status:"APPROVED",
+            isDeleted:false,
+        })
+          .select(
+             "title slug shortDescription coverImage category startDate endDate venue capacity isFree price"
+          )
+          .sort({startDate:1});
+
+         return res.status(200).json({
+           success: true,
+           count: events.length,
+           events,
+         });
+        
+    } catch (error) {
+
+        console.error("Get Approved Events Error:", error);
+
+        return res.status(500).json({
+          success: false,
+          message: "Internal Server Error",
+        });
+    }
+}
