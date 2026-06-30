@@ -1,6 +1,6 @@
 import Event from "../models/event.model.js";
 import generateSlug from "../utils/generateSlug.js";
-
+import { getApprovedEventsCache , setApprovedEventCache , invalidateApprovedEventsCache } from "../cache/event.cache.js";
 
 
 export const createEvent = async (req, res) => {
@@ -143,6 +143,8 @@ export const updateEvent = async (req,res) => {
       }
     );
 
+    await invalidateApprovedEventsCache();
+
     return res.status(200).json({
       success: true,
       message: "Event updated successfully and sent for review.",
@@ -182,6 +184,8 @@ export const deleteEvent = async (req,res) => {
      await Event.findByIdAndUpdate(eventId, {
       isDeleted: true,
     });
+
+    await invalidateApprovedEventsCache();
 
     return res.status(200).json({
       success: true,
@@ -253,6 +257,8 @@ export const reviewEvent = async (req,res) => {
 
     await event.save();
 
+    await invalidateApprovedEventsCache();
+
     return res.status(200).json({
       success: true,
       message: "Event reviewed successfully.",
@@ -273,6 +279,17 @@ export const reviewEvent = async (req,res) => {
 export const getApprovedEvents = async (req,res) => {
     try {
 
+        const cachedEvents = await getApprovedEventsCache()
+
+         if (cachedEvents) {
+           return res.status(200).json({
+             success: true,
+             source: "redis",
+             count: cachedEvents.length,
+             events: cachedEvents,
+           });
+         }   
+
         const events = await Event.find({
             status:"APPROVED",
             isDeleted:false,
@@ -281,6 +298,8 @@ export const getApprovedEvents = async (req,res) => {
              "title slug shortDescription coverImage category startDate endDate venue capacity isFree price"
           )
           .sort({startDate:1});
+
+          await setApprovedEventCache(events);
 
          return res.status(200).json({
            success: true,
