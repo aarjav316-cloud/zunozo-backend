@@ -1,6 +1,6 @@
 import express from 'express'
 
-import { createEvent, getEventById, getMyEvents, updateEvent } from '../controllers/event.controller.js'
+import { createEvent, getEventById, getMyEvents, getPendingEvents, updateEvent } from '../controllers/event.controller.js'
 import { protect  } from '../../../middleware/middleware.js'
 import validate from '../../../middleware/validate.middleware.js'
 import { createEventSchema } from '../validation/event.validation.js'
@@ -46,6 +46,13 @@ router.delete(
   authorizeRoles("ORGANIZER"),
   deleteEvent
 );
+
+router.get(
+    "/admin/pending",
+    protect,
+    authorizeRoles("ADMIN"),
+    getPendingEvents
+)
 
 export default router;
 

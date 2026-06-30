@@ -201,4 +201,28 @@ export const deleteEvent = async (req,res) => {
 
 
 
+export const getPendingEvents = async(req,res) => {
+    try {
 
+    const pendingEvents = await Event.find({
+      status: "PENDING_REVIEW",
+      isDeleted: false,
+    })
+      .populate("organizer", "fullname email")
+      .sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      success: true,
+      count: pendingEvents.length,
+      events: pendingEvents,
+    });
+        
+    } catch (error) {
+        console.error("Get Pending Event error: " , error)
+
+        return res.status(500).json({
+            success:false,
+            message:"Internal server error ",
+        });
+    }
+}
