@@ -1,6 +1,6 @@
 import express from 'express'
 
-import { createEvent, getApprovedEvents, getEventById, getMyEvents, getPendingEvents, reviewEvent, updateEvent } from '../controllers/event.controller.js'
+import { createEvent, getApprovedEvents, getEventById, getEventsBySlug, getMyEvents, getPendingEvents, reviewEvent, updateEvent } from '../controllers/event.controller.js'
 import { protect  } from '../../../middleware/middleware.js'
 import validate from '../../../middleware/validate.middleware.js'
 import { createEventSchema } from '../validation/event.validation.js'
@@ -64,6 +64,8 @@ router.patch(
 )
 
 router.get("/", getApprovedEvents)
+
+router.get("/:slug" , getEventsBySlug)
 
 export default router;
 

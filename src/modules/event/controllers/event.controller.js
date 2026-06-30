@@ -298,3 +298,36 @@ export const getApprovedEvents = async (req,res) => {
         });
     }
 }
+
+export const getEventsBySlug = async (req,res) => {
+    try {
+
+      const { slug } = req.params;
+  
+      const event = await Event.findOne({
+        slug,
+        status: "APPROVED",
+        isDeleted: false,
+      }).populate("organizer", "fullname email");
+  
+      if (!event) {
+        return res.status(404).json({
+          success: false,
+          message: "Event not found.",
+        });
+      }
+  
+      return res.status(200).json({
+        success: true,
+        event,
+      });
+        
+    } catch (error) {
+         console.error("Get Event By Slug Error:", error);
+
+         return res.status(500).json({
+           success: false,
+           message: "Internal Server Error",
+         });
+    }
+}
