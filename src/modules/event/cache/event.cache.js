@@ -27,5 +27,26 @@ export const invalidateApprovedEventsCache = async () => {
   await redisClient.del(APPROVED_EVENTS_KEY);
 };
 
+export const getEventCache = async(slug) => {
+    const cachedEvent = await redisClient.get(`event:${slug}`)
 
+    if (!cachedEvent) {
+      return null;
+    }
 
+   return JSON.parse(cachedEvent);
+};
+
+export const setEventCache = async (slug, event) => {
+  await redisClient.set(
+    `event:${slug}`,
+    JSON.stringify(event),
+    {
+      EX: CACHE_TTL,
+    }
+  );
+};
+
+export const invalidateEventCache = async (slug) => {
+  await redisClient.del(`event:${slug}`);
+};

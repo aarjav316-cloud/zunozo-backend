@@ -1,6 +1,6 @@
 import Event from "../models/event.model.js";
 import generateSlug from "../utils/generateSlug.js";
-import { getApprovedEventsCache , setApprovedEventCache , invalidateApprovedEventsCache } from "../cache/event.cache.js";
+import { getApprovedEventsCache , setApprovedEventCache , invalidateApprovedEventsCache , getEventCache , setEventCache , invalidateEventCache } from "../cache/event.cache.js";
 
 
 export const createEvent = async (req, res) => {
@@ -109,7 +109,6 @@ export const updateEvent = async (req,res) => {
     const { eventId } = req.params;
     const updateData = req.body;
 
-    // Find organizer's event
     const event = await Event.findOne({
       _id: eventId,
       organizer: req.user._id,
@@ -122,6 +121,8 @@ export const updateEvent = async (req,res) => {
         message: "Event not found.",
       });
     }
+
+     const oldSlug = event.slug;
 
     // Generate new slug if title changes
     if (updateData.title && updateData.title !== event.title) {
@@ -144,6 +145,7 @@ export const updateEvent = async (req,res) => {
     );
 
     await invalidateApprovedEventsCache();
+    await invalidateEventCache(oldSlug);
 
     return res.status(200).json({
       success: true,
@@ -186,6 +188,7 @@ export const deleteEvent = async (req,res) => {
     });
 
     await invalidateApprovedEventsCache();
+    await invalidateEventCache(event.slug);
 
     return res.status(200).json({
       success: true,
@@ -258,6 +261,7 @@ export const reviewEvent = async (req,res) => {
     await event.save();
 
     await invalidateApprovedEventsCache();
+    await invalidateEventCache(event.slug);
 
     return res.status(200).json({
       success: true,
@@ -318,10 +322,21 @@ export const getApprovedEvents = async (req,res) => {
     }
 }
 
+
 export const getEventsBySlug = async (req,res) => {
     try {
 
       const { slug } = req.params;
+
+      const cachedEvent = await getEventCache(slug);
+
+      if (cachedEvent) {
+        return res.status(200).json({
+          success: true,
+          source: "redis",
+          event: cachedEvent,
+        });
+      }
   
       const event = await Event.findOne({
         slug,
@@ -335,6 +350,8 @@ export const getEventsBySlug = async (req,res) => {
           message: "Event not found.",
         });
       }
+
+      await setEventCache(slug, event);
   
       return res.status(200).json({
         success: true,
@@ -350,3 +367,5 @@ export const getEventsBySlug = async (req,res) => {
          });
     }
 }
+
+
