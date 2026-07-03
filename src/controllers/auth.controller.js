@@ -134,7 +134,6 @@ export const verifyOTP = async (req, res) => {
       password: userData.password,
     });
 
-    
     const accessToken = generateAccessToken(user);
     const refreshToken = generateRefreshToken(user);
 
@@ -165,11 +164,11 @@ export const verifyOTP = async (req, res) => {
     return res.status(200).json({
       success: true,
       message: "OTP Verified , Account created successfully ",
-      user:{
-        id:user._id,
-        name:user.name,
-        email:user.email 
-      }
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+      },
     });
   } catch (error) {
     console.log(error);
@@ -235,7 +234,6 @@ export const resendOTP = async (req, res) => {
     });
   }
 };
-
 
 export const login = async (req, res) => {
   try {
@@ -435,7 +433,7 @@ export const googleCallback = async (req, res) => {
       return res.status(403).json({
         success: false,
         message: "this account has been deleted",
-      })
+      });
     }
 
     const accessToken = generateAccessToken(user);
@@ -496,8 +494,6 @@ export const forgotpassword = async (req, res) => {
     }
 
     const otp = generateOTP();
-
-    
 
     await redisClient.set(`forgot-password:${email}`, otp, {
       EX: 300,
