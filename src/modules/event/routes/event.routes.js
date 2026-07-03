@@ -23,41 +23,41 @@ const router = express.Router();
 router.post(
   "/",
   protect,
-  authorizeRoles("ORGANIZER"),
+  authorizeRoles("organizer"),
   validate(createEventSchema),
   createEvent,
 );
 
-router.get("/my-events", protect, authorizeRoles("ORGANIZER"), getMyEvents);
+router.get("/my-events", protect, authorizeRoles("organizer"), getMyEvents);
 
 router.get(
   "/my-events/:eventId",
   protect,
-  authorizeRoles("ORGANIZER"),
+  authorizeRoles("organizer"),
   getEventById,
 );
 
 router.patch(
   "/:eventId",
   protect,
-  authorizeRoles("ORGANIZER"),
+  authorizeRoles("organizer"),
   validate(updateEventSchema),
   updateEvent,
 );
 
-router.delete("/:eventId", protect, authorizeRoles("ORGANIZER"), deleteEvent);
+router.delete("/:eventId", protect, authorizeRoles("organizer"), deleteEvent);
 
 router.get(
   "/admin/pending",
   protect,
-  authorizeRoles("ADMIN"),
+  authorizeRoles("admin"),
   getPendingEvents,
 );
 
 router.patch(
   "/admin/:eventId/review",
   protect,
-  authorizeRoles("ADMIN"),
+  authorizeRoles("admin"),
   validate(reviewEventSchema),
   reviewEvent,
 );
