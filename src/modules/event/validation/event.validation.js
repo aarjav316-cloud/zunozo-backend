@@ -70,7 +70,37 @@ export const createEventSchema = z.object({
     .number()
     .min(0)
 
-});
+})
+.superRefine((data, ctx) => {
+     if (data.endDate <= data.startDate) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["endDate"],
+        message: "End date must be after start date.",
+      });
+    }
+
+    // Free event => price must be 0
+    if (data.isFree && data.price !== 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["price"],
+        message: "Free events must have a price of 0.",
+      });
+    }
+
+    // Paid event => price must be greater than 0
+    if (!data.isFree && data.price <= 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["price"],
+        message: "Paid events must have a price greater than 0.",
+      });
+    }
+})
+
+
+
 
 
 
