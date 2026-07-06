@@ -63,8 +63,7 @@ const organizerSchema = new mongoose.Schema(
   }
 );
 
-// Indexes
-organizerSchema.index({ user: 1 }, { unique: true });
+// Indexes (user unique index is already created by unique:true on the schema field)
 organizerSchema.index({ isVerified: 1 });
 
 const Organizer = mongoose.model("Organizer", organizerSchema);
