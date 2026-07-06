@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import Organizer from "../models/organizer.model.js";
 import User from "../../../models/user.model.js";
 import {
@@ -8,15 +9,21 @@ import {
 
 /**
  * @desc    Become an organizer (create organizer profile + update user role)
- * @route   PATCH /api/v1/organizer/become-organizer
+ * @route   POST /api/v1/organizers
  * @access  Protected (authenticated users with role "user")
  */
 export const becomeOrganizer = async (req, res) => {
+  // Start a MongoDB session for atomic transaction
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
-    const user = await User.findById(req.user._id);
+    const user = await User.findById(req.user._id).session(session);
 
     // Ensure user exists
     if (!user) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(404).json({
         success: false,
         message: "User not found.",
@@ -25,6 +32,8 @@ export const becomeOrganizer = async (req, res) => {
 
     // Ensure user role is "user" (not already organizer or admin)
     if (user.role !== "user") {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(400).json({
         success: false,
         message: "You are already an organizer or have a different role.",
@@ -32,9 +41,11 @@ export const becomeOrganizer = async (req, res) => {
     }
 
     // Ensure organizer profile does not already exist
-    const existingOrganizer = await Organizer.findOne({ user: user._id });
+    const existingOrganizer = await Organizer.findOne({ user: user._id }).session(session);
 
     if (existingOrganizer) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(409).json({
         success: false,
         message: "Organizer profile already exists.",
@@ -44,15 +55,20 @@ export const becomeOrganizer = async (req, res) => {
     // Get validated data from request body
     const { organizerName, phone, about, instagram, website } = req.body;
 
-    // Create Organizer document
-    const organizer = await Organizer.create({
-      user: user._id,
-      organizerName,
-      phone,
-      about,
-      instagram: instagram || null,
-      website: website || null,
-    });
+    // Create Organizer document within the transaction
+    const [organizer] = await Organizer.create(
+      [
+        {
+          user: user._id,
+          organizerName,
+          phone,
+          about,
+          instagram: instagram || null,
+          website: website || null,
+        },
+      ],
+      { session }
+    );
 
     // Update user role to "organizer"
     user.role = "organizer";
@@ -63,7 +79,11 @@ export const becomeOrganizer = async (req, res) => {
 
     user.refreshToken = refreshToken;
 
-    await user.save({ validateBeforeSave: false });
+    await user.save({ validateBeforeSave: false, session });
+
+    // Commit the transaction — both documents saved atomically
+    await session.commitTransaction();
+    session.endSession();
 
     // Set fresh cookies so frontend immediately reflects the new role
     // without requiring re-login
@@ -89,6 +109,10 @@ export const becomeOrganizer = async (req, res) => {
       organizer,
     });
   } catch (error) {
+    // Abort transaction on any error — rolls back both operations
+    await session.abortTransaction();
+    session.endSession();
+
     console.error("Become Organizer Error:", error);
 
     // Handle duplicate key error (race condition safeguard)
@@ -109,7 +133,7 @@ export const becomeOrganizer = async (req, res) => {
 
 /**
  * @desc    Get the authenticated organizer's profile
- * @route   GET /api/v1/organizer/profile
+ * @route   GET /api/v1/organizers/me
  * @access  Protected (organizer)
  */
 export const getOrganizerProfile = async (req, res) => {
@@ -123,7 +147,7 @@ export const getOrganizerProfile = async (req, res) => {
 
 /**
  * @desc    Update the authenticated organizer's profile
- * @route   PATCH /api/v1/organizer/profile
+ * @route   PATCH /api/v1/organizers/me
  * @access  Protected (organizer)
  */
 export const updateOrganizerProfile = async (req, res) => {
@@ -137,12 +161,12 @@ export const updateOrganizerProfile = async (req, res) => {
 
 /**
  * @desc    Delete the authenticated organizer's profile
- * @route   DELETE /api/v1/organizer/profile
+ * @route   DELETE /api/v1/organizers/me
  * @access  Protected (organizer)
  */
 export const deleteOrganizerProfile = async (req, res) => {
   // TODO: Implement delete organizer profile
-  // Should also revert user role back to "user"
+  // Should also revert user role back to "user" (use transaction)
   return res.status(501).json({
     success: false,
     message: "Not implemented yet.",
@@ -152,7 +176,7 @@ export const deleteOrganizerProfile = async (req, res) => {
 
 /**
  * @desc    Get a specific organizer by ID (public)
- * @route   GET /api/v1/organizer/:organizerId
+ * @route   GET /api/v1/organizers/:organizerId
  * @access  Public
  */
 export const getOrganizerById = async (req, res) => {

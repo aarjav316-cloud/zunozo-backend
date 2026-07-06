@@ -16,8 +16,20 @@ import { authorizeRoles } from "../../../middleware/rbac.middleware.js";
 const router = express.Router();
 
 // ==========================
-// Become Organizer
+// Create Organizer (RESTful: POST /api/v1/organizers)
 // No role middleware — this is specifically for "user" accounts becoming organizers
+// ==========================
+router.post(
+  "/",
+  protect,
+  validate(becomeOrganizerSchema),
+  becomeOrganizer,
+);
+
+// ==========================
+// Backward-compatible alias for existing frontend
+// PATCH /api/v1/organizers/become-organizer → same handler as POST /
+// Can be removed once frontend migrates to POST /api/v1/organizers
 // ==========================
 router.patch(
   "/become-organizer",
@@ -29,9 +41,9 @@ router.patch(
 // ==========================
 // Organizer Profile (future implementation)
 // ==========================
-// router.get("/profile", protect, authorizeRoles("organizer"), getOrganizerProfile);
-// router.patch("/profile", protect, authorizeRoles("organizer"), updateOrganizerProfile);
-// router.delete("/profile", protect, authorizeRoles("organizer"), deleteOrganizerProfile);
+// router.get("/me", protect, authorizeRoles("organizer"), getOrganizerProfile);
+// router.patch("/me", protect, authorizeRoles("organizer"), updateOrganizerProfile);
+// router.delete("/me", protect, authorizeRoles("organizer"), deleteOrganizerProfile);
 
 // ==========================
 // Public Organizer (future implementation)

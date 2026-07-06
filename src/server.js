@@ -31,7 +31,7 @@ app.use(helmet());
 
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/events", eventRoutes);
-app.use("/api/v1/organizer", organizerRoutes);
+app.use("/api/v1/organizers", organizerRoutes);
 
 app.get("/", (req, res) => {
   res.send("Backend Running 🚀");
