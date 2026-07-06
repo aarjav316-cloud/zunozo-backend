@@ -6,6 +6,7 @@ import cors from "cors";
 
 import authRoutes from "./routes/auth.routes.js";
 import eventRoutes from "./modules/event/routes/event.routes.js";
+import organizerRoutes from "./modules/organizer/routes/organizer.routes.js";
 
 import connectDb from "./config/db.js";
 import { connectRedis } from "./config/redis.js";
@@ -30,6 +31,7 @@ app.use(helmet());
 
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/events", eventRoutes);
+app.use("/api/v1/organizer", organizerRoutes);
 
 app.get("/", (req, res) => {
   res.send("Backend Running 🚀");

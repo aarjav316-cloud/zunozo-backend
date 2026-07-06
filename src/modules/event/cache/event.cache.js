@@ -42,3 +42,5 @@ export const setEventCache = async (slug, event) => {
 export const invalidateEventCache = async (slug) => {
   await redisClient.del(`event:${slug}`);
 };
+
+

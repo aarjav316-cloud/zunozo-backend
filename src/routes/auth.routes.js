@@ -11,6 +11,7 @@ import {
   register,
   resendOTP,
   resetPassword,
+  updateProfile,
   verifyOTP,
 } from "../controllers/auth.controller.js";
 
@@ -42,6 +43,8 @@ router.post("/forgot-password", forgotpassword);
 router.post("/reset-password", resetPassword);
 
 router.post("/change-password", protect, changePassword);
+
+router.patch("/profile", protect, updateProfile);
 
 router.delete("/delete-account", protect, deleteAccount);
 
