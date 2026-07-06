@@ -45,23 +45,36 @@ const setAuthCookies = (res, user) => {
  * Falls back to non-transactional flow with manual rollback on standalone MongoDB.
  */
 export const becomeOrganizer = async (req, res) => {
-  // Determine if transactions are supported (replica set or mongos)
   let useTransaction = false;
   let session = null;
+  let user = null;
 
   try {
+    // 1. Try to start a transaction
     session = await mongoose.startSession();
     session.startTransaction();
     useTransaction = true;
-  } catch {
-    // Standalone MongoDB — transactions not supported, proceed without
-    session = null;
+    
+    // 2. Execute the first query. If MongoDB is standalone, THIS is where it throws.
+    user = await User.findById(req.user._id).session(session);
+  } catch (error) {
+    if (error.message && error.message.includes("Transaction numbers are only allowed on a replica set member or mongos")) {
+      // Standalone MongoDB detected — cleanly fallback to non-transactional mode
+      if (session) {
+        await session.abortTransaction();
+        session.endSession();
+      }
+      useTransaction = false;
+      session = null;
+      user = await User.findById(req.user._id);
+    } else {
+      // Unrelated database error, bubble it up to the main catch block
+      throw error;
+    }
   }
 
   try {
     const sessionOpts = useTransaction ? { session } : {};
-
-    const user = await User.findById(req.user._id).session(sessionOpts.session || null);
 
     // Ensure user exists
     if (!user) {
