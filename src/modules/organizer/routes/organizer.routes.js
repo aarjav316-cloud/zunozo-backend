@@ -10,7 +10,10 @@ import {
 
 import { protect } from "../../../middleware/middleware.js";
 import validate from "../../../middleware/validate.middleware.js";
-import { becomeOrganizerSchema } from "../validation/organizer.validation.js";
+import {
+  becomeOrganizerSchema,
+  updateOrganizerProfileSchema,
+} from "../validation/organizer.validation.js";
 import { authorizeRoles } from "../../../middleware/rbac.middleware.js";
 
 const router = express.Router();
@@ -19,12 +22,7 @@ const router = express.Router();
 // Create Organizer (RESTful: POST /api/v1/organizers)
 // No role middleware — this is specifically for "user" accounts becoming organizers
 // ==========================
-router.post(
-  "/",
-  protect,
-  validate(becomeOrganizerSchema),
-  becomeOrganizer,
-);
+router.post("/", protect, validate(becomeOrganizerSchema), becomeOrganizer);
 
 // ==========================
 // Backward-compatible alias for existing frontend
@@ -39,11 +37,22 @@ router.patch(
 );
 
 // ==========================
-// Organizer Profile (future implementation)
+// Organizer Profile (authenticated organizer)
 // ==========================
-// router.get("/me", protect, authorizeRoles("organizer"), getOrganizerProfile);
-// router.patch("/me", protect, authorizeRoles("organizer"), updateOrganizerProfile);
-// router.delete("/me", protect, authorizeRoles("organizer"), deleteOrganizerProfile);
+router.get("/me", protect, authorizeRoles("organizer"), getOrganizerProfile);
+router.patch(
+  "/me",
+  protect,
+  authorizeRoles("organizer"),
+  validate(updateOrganizerProfileSchema),
+  updateOrganizerProfile,
+);
+router.delete(
+  "/me",
+  protect,
+  authorizeRoles("organizer"),
+  deleteOrganizerProfile,
+);
 
 // ==========================
 // Public Organizer (future implementation)

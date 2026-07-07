@@ -6,7 +6,6 @@ import {
   generateRefreshToken,
 } from "../../../utils/generateToken.js";
 
-
 // ==========================
 // Helper: Set fresh auth cookies after role change
 // ==========================
@@ -35,7 +34,6 @@ const setAuthCookies = (res, user) => {
   return refreshToken;
 };
 
-
 /**
  * @desc    Become an organizer (create organizer profile + update user role)
  * @route   POST /api/v1/organizers
@@ -54,11 +52,16 @@ export const becomeOrganizer = async (req, res) => {
     session = await mongoose.startSession();
     session.startTransaction();
     useTransaction = true;
-    
+
     // 2. Execute the first query. If MongoDB is standalone, THIS is where it throws.
     user = await User.findById(req.user._id).session(session);
   } catch (error) {
-    if (error.message && error.message.includes("Transaction numbers are only allowed on a replica set member or mongos")) {
+    if (
+      error.message &&
+      error.message.includes(
+        "Transaction numbers are only allowed on a replica set member or mongos",
+      )
+    ) {
       // Standalone MongoDB detected — cleanly fallback to non-transactional mode
       if (session) {
         await session.abortTransaction();
@@ -78,7 +81,10 @@ export const becomeOrganizer = async (req, res) => {
 
     // Ensure user exists
     if (!user) {
-      if (useTransaction) { await session.abortTransaction(); session.endSession(); }
+      if (useTransaction) {
+        await session.abortTransaction();
+        session.endSession();
+      }
       return res.status(404).json({
         success: false,
         message: "User not found.",
@@ -87,7 +93,10 @@ export const becomeOrganizer = async (req, res) => {
 
     // Ensure user role is "user" (not already organizer or admin)
     if (user.role !== "user") {
-      if (useTransaction) { await session.abortTransaction(); session.endSession(); }
+      if (useTransaction) {
+        await session.abortTransaction();
+        session.endSession();
+      }
       return res.status(400).json({
         success: false,
         message: "You are already an organizer or have a different role.",
@@ -95,10 +104,15 @@ export const becomeOrganizer = async (req, res) => {
     }
 
     // Ensure organizer profile does not already exist
-    const existingOrganizer = await Organizer.findOne({ user: user._id }).session(sessionOpts.session || null);
+    const existingOrganizer = await Organizer.findOne({
+      user: user._id,
+    }).session(sessionOpts.session || null);
 
     if (existingOrganizer) {
-      if (useTransaction) { await session.abortTransaction(); session.endSession(); }
+      if (useTransaction) {
+        await session.abortTransaction();
+        session.endSession();
+      }
       return res.status(409).json({
         success: false,
         message: "Organizer profile already exists.",
@@ -106,21 +120,21 @@ export const becomeOrganizer = async (req, res) => {
     }
 
     // Get validated data from request body
-    const { organizerName, phone, about, instagram, website } = req.body;
+    const { phone, about, instagram, website } = req.body;
 
     // Create Organizer document
     const [organizer] = await Organizer.create(
       [
         {
           user: user._id,
-          organizerName,
+          organizerName: user.name,
           phone,
           about,
           instagram: instagram || null,
           website: website || null,
         },
       ],
-      useTransaction ? { session } : {}
+      useTransaction ? { session } : {},
     );
 
     // Update user role to "organizer" and issue fresh tokens
@@ -147,7 +161,10 @@ export const becomeOrganizer = async (req, res) => {
   } catch (error) {
     // Abort transaction if it was started
     if (useTransaction && session) {
-      try { await session.abortTransaction(); session.endSession(); } catch {}
+      try {
+        await session.abortTransaction();
+        session.endSession();
+      } catch {}
     }
 
     // Non-transactional rollback: if organizer was created but user save failed,
@@ -177,20 +194,50 @@ export const becomeOrganizer = async (req, res) => {
   }
 };
 
-
 /**
  * @desc    Get the authenticated organizer's profile
  * @route   GET /api/v1/organizers/me
  * @access  Protected (organizer)
  */
 export const getOrganizerProfile = async (req, res) => {
-  // TODO: Implement get organizer profile
-  return res.status(501).json({
-    success: false,
-    message: "Not implemented yet.",
-  });
-};
+  try {
+    const organizer = await Organizer.findOne({ user: req.user._id }).populate({
+      path: "user",
+      select: "name email avatar role createdAt",
+    });
 
+    if (!organizer) {
+      return res.status(404).json({
+        success: false,
+        message: "Organizer profile not found.",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        user: organizer.user,
+        organizer: {
+          id: organizer._id,
+          organizerName: organizer.organizerName,
+          phone: organizer.phone,
+          about: organizer.about,
+          instagram: organizer.instagram,
+          website: organizer.website,
+          isVerified: organizer.isVerified,
+          createdAt: organizer.createdAt,
+          updatedAt: organizer.updatedAt,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Get Organizer Profile Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+    });
+  }
+};
 
 /**
  * @desc    Update the authenticated organizer's profile
@@ -198,13 +245,58 @@ export const getOrganizerProfile = async (req, res) => {
  * @access  Protected (organizer)
  */
 export const updateOrganizerProfile = async (req, res) => {
-  // TODO: Implement update organizer profile
-  return res.status(501).json({
-    success: false,
-    message: "Not implemented yet.",
-  });
-};
+  try {
+    const { phone, about, instagram, website } = req.body;
 
+    const organizer = await Organizer.findOne({ user: req.user._id });
+
+    if (!organizer) {
+      return res.status(404).json({
+        success: false,
+        message: "Organizer profile not found.",
+      });
+    }
+
+    // Update only provided fields
+    if (phone !== undefined) organizer.phone = phone;
+    if (about !== undefined) organizer.about = about;
+    if (instagram !== undefined) organizer.instagram = instagram || null;
+    if (website !== undefined) organizer.website = website || null;
+
+    await organizer.save();
+
+    // Populate user data for response
+    await organizer.populate({
+      path: "user",
+      select: "name email avatar role createdAt",
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Organizer profile updated successfully.",
+      data: {
+        user: organizer.user,
+        organizer: {
+          id: organizer._id,
+          organizerName: organizer.organizerName,
+          phone: organizer.phone,
+          about: organizer.about,
+          instagram: organizer.instagram,
+          website: organizer.website,
+          isVerified: organizer.isVerified,
+          createdAt: organizer.createdAt,
+          updatedAt: organizer.updatedAt,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Update Organizer Profile Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+    });
+  }
+};
 
 /**
  * @desc    Delete the authenticated organizer's profile
@@ -219,7 +311,6 @@ export const deleteOrganizerProfile = async (req, res) => {
     message: "Not implemented yet.",
   });
 };
-
 
 /**
  * @desc    Get a specific organizer by ID (public)
