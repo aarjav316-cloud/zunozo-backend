@@ -60,7 +60,7 @@ const organizerSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 // Indexes (user unique index is already created by unique:true on the schema field)

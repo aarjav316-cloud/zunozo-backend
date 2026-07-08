@@ -33,6 +33,12 @@ app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/events", eventRoutes);
 app.use("/api/v1/organizers", organizerRoutes);
 
+// Debug middleware
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.path}`);
+  next();
+});
+
 app.get("/", (req, res) => {
   res.send("Backend Running 🚀");
 });

@@ -5,7 +5,6 @@ import {
   getOrganizerProfile,
   updateOrganizerProfile,
   deleteOrganizerProfile,
-  getOrganizerById,
 } from "../controllers/organizer.controller.js";
 
 import { protect } from "../../../middleware/middleware.js";
