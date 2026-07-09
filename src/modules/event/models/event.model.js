@@ -183,14 +183,44 @@ const eventSchema = new mongoose.Schema({
       default: "",
     },
 
-    // ==========================
-    // Soft Delete
-    // ==========================
     isDeleted: {
       type: Boolean,
       default: false,
     },
-   
+
+    capacity:{
+      type:Number,
+      required:true,
+      min:1,
+    },
+
+    ticketsSold:{
+      type:Number,
+      default:0,
+      min:0,
+    },
+    
+    bookingDeadline:{
+      type:Date,
+      default:null,
+    },
+
+    maxTicketsPerBooking:{
+      type:Number,
+      default:10,
+      min:1,
+    },
+
+    isFree:{
+      type:Boolean,
+      default:true,
+    },
+
+    price:{
+      type:Number,
+      default:0,
+      min:0,
+    },
 },
    {
         timestamps:true,
@@ -200,3 +230,5 @@ const eventSchema = new mongoose.Schema({
 const Event = mongoose.model("Event" , eventSchema)
 
 export default Event;
+
+
