@@ -1,17 +1,14 @@
-import {z} from "zod";
-import mongoose from 'mongoose'
-
-
+import { z } from "zod";
+import mongoose from "mongoose";
 
 /**
  * Custom ObjectId Validator
  */
-const objectIdSchema = z.string().refine(
-  (value) => mongoose.Types.ObjectId.isValid(value),
-  {
+const objectIdSchema = z
+  .string()
+  .refine((value) => mongoose.Types.ObjectId.isValid(value), {
     message: "Invalid MongoDB ObjectId",
-  }
-);
+  });
 
 /**
  * ==========================
@@ -81,8 +78,6 @@ export const bookingQuerySchema = z.object({
       .enum(["PENDING", "CONFIRMED", "CANCELLED", "EXPIRED"])
       .optional(),
 
-    paymentStatus: z
-      .enum(["UNPAID", "PAID", "REFUNDED"])
-      .optional(),
+    paymentStatus: z.enum(["UNPAID", "PAID", "REFUNDED"]).optional(),
   }),
 });
