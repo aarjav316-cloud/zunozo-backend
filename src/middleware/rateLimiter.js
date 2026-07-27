@@ -30,10 +30,16 @@ export const createRateLimiter = (limit, windowSeconds) => {
 };
 
 export const loginLimiter = createRateLimiter(
-  50, // Temporarily increased for testing
-  15 * 60,
+  5, // Temporarily increased for testing
+  5 * 60,
 );
 
 export const registerLimiter = createRateLimiter(3, 5 * 60);
 
 export const otpLimiter = createRateLimiter(10, 5 * 60);
+
+
+
+
+
+
