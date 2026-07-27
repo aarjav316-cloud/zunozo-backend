@@ -78,6 +78,8 @@ export const register = async (req, res) => {
       success: true,
       message: "OTP sent successfully",
     });
+
+
   } catch (error) {
     console.log(error);
 
@@ -308,8 +310,6 @@ export const login = async (req, res) => {
     });
   }
 };
-
-//logout controller v1
 
 export const logout = async (req, res) => {
   try {
