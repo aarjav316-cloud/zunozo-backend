@@ -34,14 +34,7 @@ const setAuthCookies = (res, user) => {
   return refreshToken;
 };
 
-/**
- * @desc    Become an organizer (create organizer profile + update user role)
- * @route   POST /api/v1/organizers
- * @access  Protected (authenticated users with role "user")
- *
- * Uses MongoDB transaction when available (replica set / Atlas).
- * Falls back to non-transactional flow with manual rollback on standalone MongoDB.
- */
+
 export const becomeOrganizer = async (req, res) => {
   let useTransaction = false;
   let session = null;
