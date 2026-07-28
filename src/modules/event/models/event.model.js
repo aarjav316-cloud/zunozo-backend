@@ -188,11 +188,7 @@ const eventSchema = new mongoose.Schema({
       default: false,
     },
 
-    capacity:{
-      type:Number,
-      required:true,
-      min:1,
-    },
+    
 
     ticketsSold:{
       type:Number,
@@ -211,16 +207,7 @@ const eventSchema = new mongoose.Schema({
       min:1,
     },
 
-    isFree:{
-      type:Boolean,
-      default:true,
-    },
-
-    price:{
-      type:Number,
-      default:0,
-      min:0,
-    },
+    
 },
    {
         timestamps:true,
