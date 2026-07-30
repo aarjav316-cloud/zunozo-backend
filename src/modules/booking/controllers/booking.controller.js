@@ -162,6 +162,126 @@ export const createBooking = async (req, res) => {
      * =====================================================
      */
 
+        /**
+     * ---------------------------------------------------
+     * Generate Booking Sequence
+     * ---------------------------------------------------
+     */
+
+    const counter = await Counter.findByIdAndUpdate(
+      "booking",
+      {
+        $inc: {
+          sequenceValue: 1,
+        },
+      },
+      {
+        new: true,
+        upsert: true,
+        session,
+      }
+    );
+
+    /**
+     * ---------------------------------------------------
+     * Generate Booking ID
+     * ---------------------------------------------------
+     */
+
+    const bookingId = generateBookingId(counter.sequenceValue);
+
+    /**
+     * ---------------------------------------------------
+     * Generate Ticket Code
+     * ---------------------------------------------------
+     */
+
+    const ticketCode = generateTicketCode();
+
+    /**
+     * ---------------------------------------------------
+     * Booking Status
+     * ---------------------------------------------------
+     */
+
+    const bookingStatus = "CONFIRMED";
+
+    const paymentStatus = event.isFree ? "SUCCESS" : "PENDING";
+
+    /**
+     * ---------------------------------------------------
+     * Create Booking
+     * ---------------------------------------------------
+     */
+
+    const [booking] = await Booking.create(
+      [
+        {
+          bookingId,
+          ticketCode,
+
+          user: userId,
+          organizer: event.organizer,
+          event: event._id,
+
+          quantity,
+
+          pricePerTicket,
+          totalAmount,
+
+          bookingStatus,
+          paymentStatus,
+        },
+      ],
+      {
+        session,
+      }
+    );
+
+    /**
+     * ---------------------------------------------------
+     * Update Event Capacity
+     * ---------------------------------------------------
+     */
+
+    const updatedEvent = await Event.findOneAndUpdate(
+      {
+        _id: event._id,
+        ticketsSold: {
+          $lte: event.capacity - quantity,
+        },
+      },
+      {
+        $inc: {
+          ticketsSold: quantity,
+        },
+      },
+      {
+        new: true,
+        session,
+      }
+    );
+
+    /**
+     * ---------------------------------------------------
+     * Prevent Overselling
+     * ---------------------------------------------------
+     */
+
+    if (!updatedEvent) {
+      throw new Error("Tickets are no longer available.");
+    }
+
+    /**
+     * =====================================================
+     * PART-3 STARTS FROM HERE
+     *
+     * 1. Commit Transaction
+     * 2. Cache Invalidation
+     * 3. Response
+     * =====================================================
+     */
+
   } catch (error) {
     await session.abortTransaction();
 
