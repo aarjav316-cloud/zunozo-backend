@@ -12,3 +12,4 @@ const generateBookingId = (sequenceNumber) => {
 }
 
 
+export default generateBookingId
