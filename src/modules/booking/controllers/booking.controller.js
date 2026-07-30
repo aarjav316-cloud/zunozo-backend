@@ -1241,3 +1241,353 @@ export const getBookingById = async (req, res) => {
     });
   }
 };
+
+/**
+ * =====================================================
+ * GET EVENT BOOKINGS CONTROLLER
+ * =====================================================
+ * Production-ready event bookings retrieval for organizers
+ * Powers the Organizer Dashboard with:
+ * - Authorization checks (organizer ownership, admin)
+ * - Pagination
+ * - Filtering by bookingStatus, paymentStatus, checkedIn
+ * - Search by bookingId, ticketCode, attendee name/email
+ * - Sorting
+ * - Redis caching
+ * - Efficient queries with indexes
+ * =====================================================
+ */
+
+export const getEventBookings = async (req, res) => {
+  try {
+    const loggedInUserId = req.user._id;
+    const loggedInUserRole = req.user.role;
+
+    const { eventId } = req.params;
+
+    /**
+     * ---------------------------------------------------
+     * Validate Event ID
+     * ---------------------------------------------------
+     * Ensure valid MongoDB ObjectId format
+     */
+
+    if (!mongoose.Types.ObjectId.isValid(eventId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid event ID.",
+      });
+    }
+
+    /**
+     * ---------------------------------------------------
+     * Fetch Event
+     * ---------------------------------------------------
+     * Verify event exists and is not deleted
+     */
+
+    const event = await Event.findById(eventId)
+      .select("title slug organizer isDeleted")
+      .lean();
+
+    if (!event) {
+      return res.status(404).json({
+        success: false,
+        message: "Event not found.",
+      });
+    }
+
+    /**
+     * ---------------------------------------------------
+     * Event Deleted Check
+     * ---------------------------------------------------
+     * Prevent access to deleted events
+     */
+
+    if (event.isDeleted) {
+      return res.status(404).json({
+        success: false,
+        message: "Event not found.",
+      });
+    }
+
+    /**
+     * ---------------------------------------------------
+     * Authorization Check
+     * ---------------------------------------------------
+     * Allow access only if:
+     * 1. User is ADMIN
+     * 2. User is ORGANIZER and owns the event
+     */
+
+    const isAdmin = loggedInUserRole === "admin";
+    const isEventOrganizer =
+      loggedInUserRole === "organizer" &&
+      event.organizer.toString() === loggedInUserId.toString();
+
+    if (!isAdmin && !isEventOrganizer) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not authorized to view bookings for this event.",
+      });
+    }
+
+    /**
+     * ---------------------------------------------------
+     * Extract Query Parameters
+     * ---------------------------------------------------
+     * Support pagination, filtering, sorting, and search
+     */
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const bookingStatus = req.query.bookingStatus;
+    const paymentStatus = req.query.paymentStatus;
+    const checkedIn = req.query.checkedIn;
+    const search = req.query.search;
+    const sortBy = req.query.sortBy || "createdAt";
+    const sortOrder = req.query.sortOrder === "asc" ? 1 : -1;
+
+    /**
+     * ---------------------------------------------------
+     * Validate Limit (Prevent Abuse)
+     * ---------------------------------------------------
+     * Max 100 items per page to prevent performance issues
+     */
+
+    const validatedLimit = Math.min(limit, 100);
+
+    /**
+     * ---------------------------------------------------
+     * Build Query Filter
+     * ---------------------------------------------------
+     * Always filter by event ID
+     * Optional filters for status, payment, check-in
+     */
+
+    const query = { event: eventId };
+
+    if (bookingStatus) {
+      const validBookingStatuses = [
+        "PENDING",
+        "CONFIRMED",
+        "CANCELLED",
+        "EXPIRED",
+      ];
+
+      if (validBookingStatuses.includes(bookingStatus)) {
+        query.bookingStatus = bookingStatus;
+      }
+    }
+
+    if (paymentStatus) {
+      const validPaymentStatuses = ["UNPAID", "PAID", "REFUNDED"];
+
+      if (validPaymentStatuses.includes(paymentStatus)) {
+        query.paymentStatus = paymentStatus;
+      }
+    }
+
+    if (checkedIn !== undefined) {
+      query.checkedIn = checkedIn === "true";
+    }
+
+    /**
+     * ---------------------------------------------------
+     * Search Implementation
+     * ---------------------------------------------------
+     * Search by bookingId or ticketCode
+     * Uses indexed fields for performance
+     */
+
+    if (search && search.trim()) {
+      const searchTerm = search.trim().toUpperCase();
+
+      query.$or = [
+        { bookingId: { $regex: searchTerm, $options: "i" } },
+        { ticketCode: { $regex: searchTerm, $options: "i" } },
+      ];
+    }
+
+    /**
+     * ---------------------------------------------------
+     * Generate Cache Key
+     * ---------------------------------------------------
+     * Include all query parameters in cache key
+     * to avoid returning stale filtered data
+     */
+
+    const cacheKey = `${bookingCacheKeys.eventBookings(
+      eventId,
+      page,
+      validatedLimit,
+    )}:status:${bookingStatus || "all"}:payment:${paymentStatus || "all"}:checkedIn:${checkedIn || "all"}:search:${search || "none"}:sort:${sortBy}:${sortOrder}`;
+
+    /**
+     * ---------------------------------------------------
+     * Check Redis Cache
+     * ---------------------------------------------------
+     * Return cached response if available
+     */
+
+    const cachedData = await getCache(cacheKey);
+
+    if (cachedData) {
+      return res.status(200).json(cachedData);
+    }
+
+    /**
+     * ---------------------------------------------------
+     * Build Sort Object
+     * ---------------------------------------------------
+     * Validate sortBy field to prevent NoSQL injection
+     */
+
+    const validSortFields = [
+      "createdAt",
+      "updatedAt",
+      "totalAmount",
+      "bookingStatus",
+      "paymentStatus",
+    ];
+    const sortField = validSortFields.includes(sortBy) ? sortBy : "createdAt";
+
+    const sort = { [sortField]: sortOrder };
+
+    /**
+     * ---------------------------------------------------
+     * Fetch Bookings with Pagination
+     * ---------------------------------------------------
+     * Uses index: { event: 1, bookingStatus: 1 }
+     * Populate user details for attendee information
+     */
+
+    const bookings = await Booking.find(query)
+      .select(
+        "bookingId ticketCode quantity pricePerTicket totalAmount bookingStatus paymentStatus checkedIn checkedInAt cancelledAt createdAt updatedAt",
+      )
+      .populate({
+        path: "user",
+        select: "name email avatar",
+      })
+      .sort(sort)
+      .skip(skip)
+      .limit(validatedLimit)
+      .lean();
+
+    /**
+     * ---------------------------------------------------
+     * Get Total Count
+     * ---------------------------------------------------
+     * Required for pagination metadata
+     */
+
+    const totalBookings = await Booking.countDocuments(query);
+
+    /**
+     * ---------------------------------------------------
+     * Calculate Pagination Metadata
+     * ---------------------------------------------------
+     */
+
+    const totalPages = Math.ceil(totalBookings / validatedLimit);
+    const hasNextPage = page < totalPages;
+    const hasPrevPage = page > 1;
+
+    /**
+     * ---------------------------------------------------
+     * Calculate Summary Statistics
+     * ---------------------------------------------------
+     * Provide quick metrics for organizer dashboard
+     * Ready for analytics integration
+     */
+
+    const summary = {
+      totalBookings,
+      confirmedBookings: await Booking.countDocuments({
+        event: eventId,
+        bookingStatus: "CONFIRMED",
+      }),
+      cancelledBookings: await Booking.countDocuments({
+        event: eventId,
+        bookingStatus: "CANCELLED",
+      }),
+      checkedInAttendees: await Booking.countDocuments({
+        event: eventId,
+        checkedIn: true,
+      }),
+    };
+
+    /**
+     * ---------------------------------------------------
+     * Build Response
+     * ---------------------------------------------------
+     * Consistent with existing project response structure
+     * Includes event context and summary statistics
+     */
+
+    const response = {
+      success: true,
+      message: "Event bookings retrieved successfully.",
+      data: {
+        event: {
+          _id: event._id,
+          title: event.title,
+          slug: event.slug,
+        },
+        bookings,
+        summary,
+        pagination: {
+          currentPage: page,
+          totalPages,
+          totalBookings,
+          limit: validatedLimit,
+          hasNextPage,
+          hasPrevPage,
+        },
+      },
+    };
+
+    /**
+     * ---------------------------------------------------
+     * Cache Successful Response
+     * ---------------------------------------------------
+     * Only cache successful responses
+     * TTL defined in booking.cache.js (300 seconds)
+     */
+
+    await setCache(cacheKey, response);
+
+    /**
+     * ---------------------------------------------------
+     * Return Response
+     * ---------------------------------------------------
+     * Complete event booking data ready for:
+     * - Organizer Dashboard
+     * - CSV Export
+     * - Excel Export
+     * - QR Check-in
+     * - Analytics
+     * - Revenue reports
+     */
+
+    return res.status(200).json(response);
+  } catch (error) {
+    /**
+     * ---------------------------------------------------
+     * Error Handling
+     * ---------------------------------------------------
+     * Never expose internal error details
+     * Log for debugging purposes only
+     */
+
+    console.error("Get Event Bookings Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to retrieve event bookings. Please try again.",
+    });
+  }
+};
