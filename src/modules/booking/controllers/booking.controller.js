@@ -415,3 +415,376 @@ export const createBooking = async (req, res) => {
     await session.endSession();
   }
 };
+
+/**
+ * =====================================================
+ * CANCEL BOOKING CONTROLLER
+ * =====================================================
+ * Production-ready booking cancellation with:
+ * - MongoDB Transactions
+ * - Authorization checks
+ * - Atomic ticket restoration
+ * - Redis cache invalidation
+ * - Proper error handling
+ * =====================================================
+ */
+
+export const cancelBooking = async (req, res) => {
+  const session = await mongoose.startSession();
+
+  try {
+    session.startTransaction();
+
+    const loggedInUserId = req.user._id;
+    const loggedInUserRole = req.user.role;
+
+    const { bookingId } = req.params;
+
+    /**
+     * ---------------------------------------------------
+     * Fetch Booking
+     * ---------------------------------------------------
+     * Find by bookingId (ZNZ-YYYYMMDD-XXXXXX format)
+     * Populate event details needed for validation
+     */
+
+    const booking = await Booking.findOne({ bookingId })
+      .populate("event")
+      .session(session);
+
+    if (!booking) {
+      await session.abortTransaction();
+
+      return res.status(404).json({
+        success: false,
+        message: "Booking not found.",
+      });
+    }
+
+    /**
+     * ---------------------------------------------------
+     * Authorization Check
+     * ---------------------------------------------------
+     * Allow cancellation if:
+     * 1. User owns the booking
+     * 2. User is ADMIN
+     * 3. User is ORGANIZER and owns the event
+     */
+
+    const isOwner = booking.user.toString() === loggedInUserId.toString();
+    const isAdmin = loggedInUserRole === "admin";
+    const isEventOrganizer =
+      loggedInUserRole === "organizer" &&
+      booking.organizer.toString() === loggedInUserId.toString();
+
+    if (!isOwner && !isAdmin && !isEventOrganizer) {
+      await session.abortTransaction();
+
+      return res.status(403).json({
+        success: false,
+        message: "You are not authorized to cancel this booking.",
+      });
+    }
+
+    /**
+     * ---------------------------------------------------
+     * Already Cancelled Check
+     * ---------------------------------------------------
+     * Prevent duplicate cancellation
+     */
+
+    if (booking.bookingStatus === "CANCELLED") {
+      await session.abortTransaction();
+
+      return res.status(400).json({
+        success: false,
+        message: "This booking is already cancelled.",
+      });
+    }
+
+    /**
+     * ---------------------------------------------------
+     * Check-In Validation
+     * ---------------------------------------------------
+     * Cannot cancel a booking that's already checked in
+     */
+
+    if (booking.checkedIn) {
+      await session.abortTransaction();
+
+      return res.status(400).json({
+        success: false,
+        message: "Cannot cancel a checked-in booking.",
+      });
+    }
+
+    /**
+     * ---------------------------------------------------
+     * Payment Processing Check
+     * ---------------------------------------------------
+     * Future compatibility: prevent cancellation during payment
+     * Currently not implemented but structure is ready
+     */
+
+    // if (booking.paymentStatus === "PROCESSING") {
+    //   await session.abortTransaction();
+    //
+    //   return res.status(409).json({
+    //     success: false,
+    //     message: "Cannot cancel booking while payment is processing.",
+    //   });
+    // }
+
+    /**
+     * ---------------------------------------------------
+     * Event Existence Check
+     * ---------------------------------------------------
+     */
+
+    const event = booking.event;
+
+    if (!event) {
+      await session.abortTransaction();
+
+      return res.status(404).json({
+        success: false,
+        message: "Event associated with this booking not found.",
+      });
+    }
+
+    /**
+     * ---------------------------------------------------
+     * Event Deleted Check
+     * ---------------------------------------------------
+     */
+
+    if (event.isDeleted) {
+      await session.abortTransaction();
+
+      return res.status(400).json({
+        success: false,
+        message: "Cannot cancel booking for a deleted event.",
+      });
+    }
+
+    /**
+     * ---------------------------------------------------
+     * Cancellation Deadline Validation
+     * ---------------------------------------------------
+     * Check if event has cancellationDeadline field
+     * Otherwise use event start time as deadline
+     */
+
+    const now = new Date();
+
+    if (event.cancellationDeadline && now > event.cancellationDeadline) {
+      await session.abortTransaction();
+
+      return res.status(400).json({
+        success: false,
+        message: "Cancellation deadline has passed.",
+      });
+    }
+
+    if (!event.cancellationDeadline && now >= event.startDate) {
+      await session.abortTransaction();
+
+      return res.status(400).json({
+        success: false,
+        message: "Cannot cancel booking after event has started.",
+      });
+    }
+
+    /**
+     * ---------------------------------------------------
+     * Determine New Payment Status
+     * ---------------------------------------------------
+     * Free events: No refund needed
+     * Paid events (PAID): Refund needed
+     * Paid events (UNPAID): Just cancel
+     */
+
+    let newPaymentStatus;
+
+    if (event.isFree) {
+      newPaymentStatus = "UNPAID"; // Free event, no payment involved
+    } else {
+      newPaymentStatus =
+        booking.paymentStatus === "PAID" ? "REFUNDED" : "UNPAID";
+    }
+
+    /**
+     * ---------------------------------------------------
+     * Update Booking Status
+     * ---------------------------------------------------
+     * Set booking as CANCELLED with timestamp
+     * Update payment status based on event type
+     */
+
+    booking.bookingStatus = "CANCELLED";
+    booking.cancelledAt = now;
+    booking.paymentStatus = newPaymentStatus;
+
+    await booking.save({ session });
+
+    /**
+     * ---------------------------------------------------
+     * Atomically Restore Event Capacity
+     * ---------------------------------------------------
+     * Decrement ticketsSold to restore capacity
+     * Ensure ticketsSold never goes negative
+     */
+
+    const updatedEvent = await Event.findOneAndUpdate(
+      {
+        _id: event._id,
+        ticketsSold: { $gte: booking.quantity },
+      },
+      {
+        $inc: {
+          ticketsSold: -booking.quantity,
+        },
+      },
+      {
+        new: true,
+        session,
+      },
+    );
+
+    /**
+     * ---------------------------------------------------
+     * Capacity Restoration Validation
+     * ---------------------------------------------------
+     * If update fails, ticketsSold would go negative
+     * This should never happen but protects data integrity
+     */
+
+    if (!updatedEvent) {
+      await session.abortTransaction();
+
+      return res.status(409).json({
+        success: false,
+        message: "Unable to restore event capacity. Please contact support.",
+      });
+    }
+
+    /**
+     * ---------------------------------------------------
+     * Commit Transaction
+     * ---------------------------------------------------
+     * All database operations succeeded
+     * Persist changes atomically
+     */
+
+    await session.commitTransaction();
+
+    /**
+     * ---------------------------------------------------
+     * Invalidate Booking Cache
+     * ---------------------------------------------------
+     * Invalidate all related booking caches:
+     * - This specific booking
+     * - User's booking list
+     * - Organizer's booking list
+     * - Event's booking list
+     * - All bookings list (admin)
+     */
+
+    try {
+      await invalidateBookingCache({
+        bookingId: booking.bookingId,
+        userId: booking.user.toString(),
+        organizerId: booking.organizer.toString(),
+        eventId: event._id.toString(),
+      });
+    } catch (cacheError) {
+      // Redis failure should not affect successful DB transaction
+      console.error("Booking cache invalidation failed:", cacheError);
+    }
+
+    /**
+     * ---------------------------------------------------
+     * Invalidate Event Cache
+     * ---------------------------------------------------
+     * Event capacity has changed, invalidate:
+     * - Single event cache (by slug)
+     * - Approved events list cache
+     */
+
+    try {
+      if (event.slug) {
+        await invalidateEventCache(event.slug);
+      }
+
+      await invalidateApprovedEventsCache();
+    } catch (cacheError) {
+      // Redis failure should not affect successful DB transaction
+      console.error("Event cache invalidation failed:", cacheError);
+    }
+
+    /**
+     * ---------------------------------------------------
+     * Success Response
+     * ---------------------------------------------------
+     * Return updated booking details
+     * Ready for future integrations:
+     * - Razorpay Refund API
+     * - Email notifications
+     * - Socket.IO real-time updates
+     * - Audit logs
+     */
+
+    return res.status(200).json({
+      success: true,
+      message: "Booking cancelled successfully.",
+      data: {
+        bookingId: booking.bookingId,
+        ticketCode: booking.ticketCode,
+        bookingStatus: booking.bookingStatus,
+        paymentStatus: booking.paymentStatus,
+        cancelledAt: booking.cancelledAt,
+        quantity: booking.quantity,
+        totalAmount: booking.totalAmount,
+        refundNote:
+          newPaymentStatus === "REFUNDED"
+            ? "Refund will be processed within 5-7 business days."
+            : null,
+      },
+    });
+  } catch (error) {
+    /**
+     * ---------------------------------------------------
+     * Transaction Rollback
+     * ---------------------------------------------------
+     * Any unexpected error aborts the transaction
+     * All changes are rolled back automatically
+     */
+
+    await session.abortTransaction();
+
+    console.error("Cancel Booking Error:", error);
+
+    /**
+     * ---------------------------------------------------
+     * Error Response
+     * ---------------------------------------------------
+     * Never expose internal error details to client
+     * Return generic user-friendly message
+     */
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to cancel booking. Please try again.",
+    });
+  } finally {
+    /**
+     * ---------------------------------------------------
+     * Session Cleanup
+     * ---------------------------------------------------
+     * CRITICAL: Always end session to prevent memory leaks
+     * Runs whether transaction succeeds or fails
+     */
+
+    await session.endSession();
+  }
+};
