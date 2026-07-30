@@ -1004,3 +1004,240 @@ export const getMyBookings = async (req, res) => {
     });
   }
 };
+
+/**
+ * =====================================================
+ * GET BOOKING BY ID CONTROLLER
+ * =====================================================
+ * Production-ready single booking retrieval with:
+ * - Authorization checks (owner, admin, organizer)
+ * - Complete booking details for ticket page
+ * - Redis caching
+ * - Efficient population
+ * - Security against enumeration
+ * =====================================================
+ */
+
+export const getBookingById = async (req, res) => {
+  try {
+    const loggedInUserId = req.user._id;
+    const loggedInUserRole = req.user.role;
+
+    const { bookingId } = req.params;
+
+    /**
+     * ---------------------------------------------------
+     * Check Redis Cache
+     * ---------------------------------------------------
+     * Generate cache key and check for cached booking
+     * Only authorized responses are cached
+     */
+
+    const cacheKey = bookingCacheKeys.booking(bookingId);
+    const cachedBooking = await getCache(cacheKey);
+
+    if (cachedBooking) {
+      /**
+       * ---------------------------------------------------
+       * Authorization Check for Cached Data
+       * ---------------------------------------------------
+       * Even with cache, verify user is authorized
+       * This prevents unauthorized access to cached data
+       */
+
+      const isOwner =
+        cachedBooking.data.user._id.toString() === loggedInUserId.toString();
+      const isAdmin = loggedInUserRole === "admin";
+      const isEventOrganizer =
+        loggedInUserRole === "organizer" &&
+        cachedBooking.data.organizer._id.toString() ===
+          loggedInUserId.toString();
+
+      if (isOwner || isAdmin || isEventOrganizer) {
+        return res.status(200).json(cachedBooking);
+      }
+
+      // Not authorized - continue to DB to return proper 403
+    }
+
+    /**
+     * ---------------------------------------------------
+     * Fetch Booking from Database
+     * ---------------------------------------------------
+     * Find by bookingId (ZNZ-YYYYMMDD-XXXXXX format)
+     * Populate user, event, and organizer details
+     */
+
+    const booking = await Booking.findOne({ bookingId })
+      .populate({
+        path: "user",
+        select: "name email avatar",
+      })
+      .populate({
+        path: "event",
+        select:
+          "title slug shortDescription description category tags startDate endDate venue coverImage galleryImages capacity isFree price status ticketsSold bookingDeadline maxTicketsPerBooking",
+      })
+      .populate({
+        path: "organizer",
+        select: "name email avatar",
+      })
+      .lean();
+
+    /**
+     * ---------------------------------------------------
+     * Booking Not Found
+     * ---------------------------------------------------
+     * Return 404 without revealing if booking exists
+     * Prevents booking ID enumeration
+     */
+
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: "Booking not found.",
+      });
+    }
+
+    /**
+     * ---------------------------------------------------
+     * Authorization Check
+     * ---------------------------------------------------
+     * Allow access only if:
+     * 1. User owns the booking
+     * 2. User is ADMIN
+     * 3. User is ORGANIZER and owns the event
+     */
+
+    const isOwner = booking.user._id.toString() === loggedInUserId.toString();
+    const isAdmin = loggedInUserRole === "admin";
+    const isEventOrganizer =
+      loggedInUserRole === "organizer" &&
+      booking.organizer._id.toString() === loggedInUserId.toString();
+
+    if (!isOwner && !isAdmin && !isEventOrganizer) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not authorized to view this booking.",
+      });
+    }
+
+    /**
+     * ---------------------------------------------------
+     * Build Complete Response
+     * ---------------------------------------------------
+     * Return all details needed for:
+     * - Booking details page
+     * - Downloadable ticket
+     * - QR code generation
+     * - Invoice generation
+     * - Email ticket
+     */
+
+    const response = {
+      success: true,
+      message: "Booking retrieved successfully.",
+      data: {
+        // Booking Information
+        bookingId: booking.bookingId,
+        ticketCode: booking.ticketCode,
+        quantity: booking.quantity,
+        pricePerTicket: booking.pricePerTicket,
+        totalAmount: booking.totalAmount,
+
+        // Status
+        bookingStatus: booking.bookingStatus,
+        paymentStatus: booking.paymentStatus,
+
+        // Check-in Details
+        checkedIn: booking.checkedIn,
+        checkedInAt: booking.checkedInAt,
+
+        // Cancellation Details
+        cancelledAt: booking.cancelledAt,
+
+        // Timestamps
+        createdAt: booking.createdAt,
+        updatedAt: booking.updatedAt,
+
+        // User Details (Booking Owner)
+        user: {
+          _id: booking.user._id,
+          name: booking.user.name,
+          email: booking.user.email,
+          avatar: booking.user.avatar,
+        },
+
+        // Event Details (Complete for ticket display)
+        event: {
+          _id: booking.event._id,
+          title: booking.event.title,
+          slug: booking.event.slug,
+          shortDescription: booking.event.shortDescription,
+          description: booking.event.description,
+          category: booking.event.category,
+          tags: booking.event.tags,
+          startDate: booking.event.startDate,
+          endDate: booking.event.endDate,
+          venue: booking.event.venue,
+          coverImage: booking.event.coverImage,
+          galleryImages: booking.event.galleryImages,
+          capacity: booking.event.capacity,
+          ticketsSold: booking.event.ticketsSold,
+          isFree: booking.event.isFree,
+          price: booking.event.price,
+          status: booking.event.status,
+          bookingDeadline: booking.event.bookingDeadline,
+          maxTicketsPerBooking: booking.event.maxTicketsPerBooking,
+        },
+
+        // Organizer Details
+        organizer: {
+          _id: booking.organizer._id,
+          name: booking.organizer.name,
+          email: booking.organizer.email,
+          avatar: booking.organizer.avatar,
+        },
+      },
+    };
+
+    /**
+     * ---------------------------------------------------
+     * Cache Successful Response
+     * ---------------------------------------------------
+     * Only cache after authorization check passes
+     * TTL defined in booking.cache.js (300 seconds)
+     */
+
+    await setCache(cacheKey, response);
+
+    /**
+     * ---------------------------------------------------
+     * Return Response
+     * ---------------------------------------------------
+     * Complete booking details ready for:
+     * - Ticket page rendering
+     * - PDF ticket generation
+     * - QR code display
+     * - Invoice download
+     * - Email notifications
+     */
+
+    return res.status(200).json(response);
+  } catch (error) {
+    /**
+     * ---------------------------------------------------
+     * Error Handling
+     * ---------------------------------------------------
+     * Never expose internal error details
+     * Log for debugging purposes only
+     */
+
+    console.error("Get Booking By ID Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to retrieve booking. Please try again.",
+    });
+  }
+};
