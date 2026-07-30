@@ -7,7 +7,12 @@ import Counter from "../model/counter.model.js";
 import generateBookingId from "../utils/generateBookingId.js";
 import generateTicketCode from "../utils/generateTicketCode.js";
 
-import { invalidateBookingCache } from "../cache/booking.cache.js";
+import {
+  invalidateBookingCache,
+  bookingCacheKeys,
+  getCache,
+  setCache,
+} from "../cache/booking.cache.js";
 import {
   invalidateEventCache,
   invalidateApprovedEventsCache,
@@ -786,5 +791,216 @@ export const cancelBooking = async (req, res) => {
      */
 
     await session.endSession();
+  }
+};
+
+/**
+ * =====================================================
+ * GET MY BOOKINGS CONTROLLER
+ * =====================================================
+ * Production-ready booking retrieval for authenticated users
+ * - Pagination
+ * - Filtering by bookingStatus and paymentStatus
+ * - Sorting
+ * - Redis caching
+ * - Efficient queries with indexes
+ * =====================================================
+ */
+
+export const getMyBookings = async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    /**
+     * ---------------------------------------------------
+     * Extract Query Parameters
+     * ---------------------------------------------------
+     * Support pagination, filtering, and sorting
+     */
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const bookingStatus = req.query.bookingStatus;
+    const paymentStatus = req.query.paymentStatus;
+    const sortBy = req.query.sortBy || "createdAt";
+    const sortOrder = req.query.sortOrder === "asc" ? 1 : -1;
+
+    /**
+     * ---------------------------------------------------
+     * Validate Limit (Prevent Abuse)
+     * ---------------------------------------------------
+     * Max 100 items per page to prevent performance issues
+     */
+
+    const validatedLimit = Math.min(limit, 100);
+
+    /**
+     * ---------------------------------------------------
+     * Build Query Filter
+     * ---------------------------------------------------
+     * Always filter by authenticated user
+     * Optional filters for bookingStatus and paymentStatus
+     */
+
+    const query = { user: userId };
+
+    if (bookingStatus) {
+      const validBookingStatuses = [
+        "PENDING",
+        "CONFIRMED",
+        "CANCELLED",
+        "EXPIRED",
+      ];
+
+      if (validBookingStatuses.includes(bookingStatus)) {
+        query.bookingStatus = bookingStatus;
+      }
+    }
+
+    if (paymentStatus) {
+      const validPaymentStatuses = ["UNPAID", "PAID", "REFUNDED"];
+
+      if (validPaymentStatuses.includes(paymentStatus)) {
+        query.paymentStatus = paymentStatus;
+      }
+    }
+
+    /**
+     * ---------------------------------------------------
+     * Generate Cache Key
+     * ---------------------------------------------------
+     * Include all query parameters in cache key
+     * to avoid returning stale filtered data
+     */
+
+    const cacheKey = `${bookingCacheKeys.userBookings(
+      userId.toString(),
+      page,
+      validatedLimit,
+    )}:status:${bookingStatus || "all"}:payment:${paymentStatus || "all"}:sort:${sortBy}:${sortOrder}`;
+
+    /**
+     * ---------------------------------------------------
+     * Check Redis Cache
+     * ---------------------------------------------------
+     * Return cached response if available
+     */
+
+    const cachedData = await getCache(cacheKey);
+
+    if (cachedData) {
+      return res.status(200).json(cachedData);
+    }
+
+    /**
+     * ---------------------------------------------------
+     * Build Sort Object
+     * ---------------------------------------------------
+     * Validate sortBy field to prevent NoSQL injection
+     */
+
+    const validSortFields = ["createdAt", "updatedAt", "totalAmount"];
+    const sortField = validSortFields.includes(sortBy) ? sortBy : "createdAt";
+
+    const sort = { [sortField]: sortOrder };
+
+    /**
+     * ---------------------------------------------------
+     * Fetch Bookings with Pagination
+     * ---------------------------------------------------
+     * Uses index: { user: 1, createdAt: -1 }
+     * Populate only essential event fields
+     */
+
+    const bookings = await Booking.find(query)
+      .select(
+        "bookingId ticketCode quantity pricePerTicket totalAmount bookingStatus paymentStatus checkedIn checkedInAt cancelledAt createdAt updatedAt",
+      )
+      .populate({
+        path: "event",
+        select:
+          "title slug startDate endDate venue.venueName venue.city venue.state coverImage category isFree price status isDeleted",
+      })
+      .sort(sort)
+      .skip(skip)
+      .limit(validatedLimit)
+      .lean();
+
+    /**
+     * ---------------------------------------------------
+     * Get Total Count
+     * ---------------------------------------------------
+     * Required for pagination metadata
+     */
+
+    const totalBookings = await Booking.countDocuments(query);
+
+    /**
+     * ---------------------------------------------------
+     * Calculate Pagination Metadata
+     * ---------------------------------------------------
+     */
+
+    const totalPages = Math.ceil(totalBookings / validatedLimit);
+    const hasNextPage = page < totalPages;
+    const hasPrevPage = page > 1;
+
+    /**
+     * ---------------------------------------------------
+     * Build Response
+     * ---------------------------------------------------
+     * Consistent with existing project response structure
+     */
+
+    const response = {
+      success: true,
+      message: "Bookings retrieved successfully.",
+      data: {
+        bookings,
+        pagination: {
+          currentPage: page,
+          totalPages,
+          totalBookings,
+          limit: validatedLimit,
+          hasNextPage,
+          hasPrevPage,
+        },
+      },
+    };
+
+    /**
+     * ---------------------------------------------------
+     * Cache Successful Response
+     * ---------------------------------------------------
+     * Only cache successful responses
+     * TTL defined in booking.cache.js (300 seconds)
+     */
+
+    await setCache(cacheKey, response);
+
+    /**
+     * ---------------------------------------------------
+     * Return Response
+     * ---------------------------------------------------
+     */
+
+    return res.status(200).json(response);
+  } catch (error) {
+    /**
+     * ---------------------------------------------------
+     * Error Handling
+     * ---------------------------------------------------
+     * Never expose internal error details
+     * Log for debugging purposes only
+     */
+
+    console.error("Get My Bookings Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to retrieve bookings. Please try again.",
+    });
   }
 };
