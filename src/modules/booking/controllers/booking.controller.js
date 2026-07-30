@@ -1591,3 +1591,257 @@ export const getEventBookings = async (req, res) => {
     });
   }
 };
+
+/**
+ * =====================================================
+ * CHECK-IN BOOKING CONTROLLER
+ * =====================================================
+ * Production-ready booking check-in for QR scanner
+ * - Authorization checks (organizer, admin)
+ * - Comprehensive validations
+ * - Duplicate check-in prevention
+ * - Redis cache invalidation
+ * - Ready for Socket.IO integration
+ * =====================================================
+ */
+
+export const checkInBooking = async (req, res) => {
+  try {
+    const loggedInUserId = req.user._id;
+    const loggedInUserRole = req.user.role;
+
+    const { ticketCode } = req.params;
+
+    /**
+     * ---------------------------------------------------
+     * Fetch Booking by Ticket Code
+     * ---------------------------------------------------
+     * QR scanner provides ticketCode (8-char alphanumeric)
+     * Populate event for validation
+     */
+
+    const booking = await Booking.findOne({ ticketCode })
+      .populate({
+        path: "event",
+        select: "title slug organizer startDate endDate isDeleted",
+      })
+      .populate({
+        path: "user",
+        select: "name email avatar",
+      });
+
+    /**
+     * ---------------------------------------------------
+     * Booking Not Found
+     * ---------------------------------------------------
+     * Invalid ticket code or booking doesn't exist
+     */
+
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: "Booking not found. Invalid ticket code.",
+      });
+    }
+
+    /**
+     * ---------------------------------------------------
+     * Event Validation
+     * ---------------------------------------------------
+     * Ensure event exists and is not deleted
+     */
+
+    const event = booking.event;
+
+    if (!event) {
+      return res.status(404).json({
+        success: false,
+        message: "Event associated with this booking not found.",
+      });
+    }
+
+    if (event.isDeleted) {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot check in for a deleted event.",
+      });
+    }
+
+    /**
+     * ---------------------------------------------------
+     * Authorization Check
+     * ---------------------------------------------------
+     * Only event organizer or admin can check in attendees
+     * Prevents other organizers from checking in attendees
+     */
+
+    const isAdmin = loggedInUserRole === "admin";
+    const isEventOrganizer =
+      loggedInUserRole === "organizer" &&
+      event.organizer.toString() === loggedInUserId.toString();
+
+    if (!isAdmin && !isEventOrganizer) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not authorized to check in attendees for this event.",
+      });
+    }
+
+    /**
+     * ---------------------------------------------------
+     * Booking Status Validation
+     * ---------------------------------------------------
+     * Cannot check in cancelled bookings
+     */
+
+    if (booking.bookingStatus === "CANCELLED") {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot check in a cancelled booking.",
+      });
+    }
+
+    /**
+     * ---------------------------------------------------
+     * Payment Validation
+     * ---------------------------------------------------
+     * Check if booking is paid (or free event)
+     * Free events have paymentStatus: "PAID"
+     * Paid events must be "PAID" status
+     */
+
+    if (booking.paymentStatus !== "PAID") {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot check in. Payment not completed.",
+      });
+    }
+
+    /**
+     * ---------------------------------------------------
+     * Already Checked In
+     * ---------------------------------------------------
+     * Prevent duplicate check-in
+     * Return 400 with informative message
+     */
+
+    if (booking.checkedIn) {
+      return res.status(400).json({
+        success: false,
+        message: "This booking has already been checked in.",
+        data: {
+          checkedInAt: booking.checkedInAt,
+        },
+      });
+    }
+
+    /**
+     * ---------------------------------------------------
+     * Event Timing Validation
+     * ---------------------------------------------------
+     * Allow check-in only after event has started
+     * Prevent early check-ins (optional - adjust based on business rules)
+     */
+
+    const now = new Date();
+
+    // Allow check-in 30 minutes before event starts (flexible window)
+    const checkInWindowStart = new Date(
+      event.startDate.getTime() - 30 * 60 * 1000,
+    );
+
+    if (now < checkInWindowStart) {
+      return res.status(400).json({
+        success: false,
+        message: "Check-in not available yet. Event has not started.",
+      });
+    }
+
+    /**
+     * ---------------------------------------------------
+     * Update Booking - Check In
+     * ---------------------------------------------------
+     * Mark booking as checked in with timestamp
+     * No transaction needed (single document update)
+     */
+
+    booking.checkedIn = true;
+    booking.checkedInAt = now;
+
+    await booking.save();
+
+    /**
+     * ---------------------------------------------------
+     * Invalidate Cache
+     * ---------------------------------------------------
+     * Invalidate relevant caches after successful check-in
+     * - Single booking cache
+     * - User bookings cache
+     * - Event bookings cache (organizer dashboard)
+     */
+
+    try {
+      await invalidateBookingCache({
+        bookingId: booking.bookingId,
+        userId: booking.user._id.toString(),
+        organizerId: booking.organizer.toString(),
+        eventId: event._id.toString(),
+      });
+    } catch (cacheError) {
+      // Redis failure should not affect successful check-in
+      console.error("Cache invalidation failed:", cacheError);
+    }
+
+    /**
+     * ---------------------------------------------------
+     * Success Response
+     * ---------------------------------------------------
+     * Return updated booking with attendee information
+     * Ready for:
+     * - QR Scanner display
+     * - Socket.IO real-time updates
+     * - Attendance analytics
+     * - Event capacity dashboard
+     */
+
+    return res.status(200).json({
+      success: true,
+      message: "Attendee checked in successfully.",
+      data: {
+        bookingId: booking.bookingId,
+        ticketCode: booking.ticketCode,
+        quantity: booking.quantity,
+        checkedIn: booking.checkedIn,
+        checkedInAt: booking.checkedInAt,
+        user: {
+          _id: booking.user._id,
+          name: booking.user.name,
+          email: booking.user.email,
+          avatar: booking.user.avatar,
+        },
+        event: {
+          _id: event._id,
+          title: event.title,
+          slug: event.slug,
+          startDate: event.startDate,
+          endDate: event.endDate,
+        },
+      },
+    });
+  } catch (error) {
+    /**
+     * ---------------------------------------------------
+     * Error Handling
+     * ---------------------------------------------------
+     * Never expose internal error details
+     * Log for debugging purposes only
+     */
+
+    console.error("Check In Booking Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to check in booking. Please try again.",
+    });
+  }
+};
