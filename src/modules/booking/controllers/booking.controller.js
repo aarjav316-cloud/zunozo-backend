@@ -1845,3 +1845,255 @@ export const checkInBooking = async (req, res) => {
     });
   }
 };
+
+/**
+ * =====================================================
+ * DELETE BOOKING CONTROLLER
+ * =====================================================
+ * Production-ready booking deletion (Admin only)
+ * - Hard delete (no soft delete in Booking model)
+ * - Transaction-based (restore event capacity)
+ * - Admin-only authorization
+ * - Cache invalidation
+ * - Audit-ready structure
+ * =====================================================
+ */
+
+export const deleteBooking = async (req, res) => {
+  const session = await mongoose.startSession();
+
+  try {
+    session.startTransaction();
+
+    const loggedInUserId = req.user._id;
+    const loggedInUserRole = req.user.role;
+
+    const { bookingId } = req.params;
+
+    /**
+     * ---------------------------------------------------
+     * Authorization Check
+     * ---------------------------------------------------
+     * Only administrators can delete bookings
+     * This is a destructive operation requiring highest privileges
+     */
+
+    if (loggedInUserRole !== "admin") {
+      await session.abortTransaction();
+
+      return res.status(403).json({
+        success: false,
+        message: "Only administrators can delete bookings.",
+      });
+    }
+
+    /**
+     * ---------------------------------------------------
+     * Fetch Booking
+     * ---------------------------------------------------
+     * Find by bookingId (ZNZ-YYYYMMDD-XXXXXX format)
+     * Populate event for capacity restoration
+     */
+
+    const booking = await Booking.findOne({ bookingId })
+      .populate({
+        path: "event",
+        select: "_id title slug organizer ticketsSold capacity isDeleted",
+      })
+      .session(session);
+
+    /**
+     * ---------------------------------------------------
+     * Booking Not Found
+     * ---------------------------------------------------
+     * Return 404 if booking doesn't exist
+     */
+
+    if (!booking) {
+      await session.abortTransaction();
+
+      return res.status(404).json({
+        success: false,
+        message: "Booking not found.",
+      });
+    }
+
+    /**
+     * ---------------------------------------------------
+     * Store Booking Data for Response
+     * ---------------------------------------------------
+     * Capture before deletion for audit trail
+     */
+
+    const deletedBookingData = {
+      bookingId: booking.bookingId,
+      ticketCode: booking.ticketCode,
+      userId: booking.user.toString(),
+      organizerId: booking.organizer.toString(),
+      eventId: booking.event._id.toString(),
+      quantity: booking.quantity,
+      bookingStatus: booking.bookingStatus,
+      paymentStatus: booking.paymentStatus,
+      totalAmount: booking.totalAmount,
+    };
+
+    /**
+     * ---------------------------------------------------
+     * Event Capacity Restoration
+     * ---------------------------------------------------
+     * If booking was CONFIRMED (not cancelled):
+     * - Restore event capacity
+     * - Decrement ticketsSold
+     *
+     * If booking was CANCELLED:
+     * - Capacity already restored during cancellation
+     * - No need to restore again
+     */
+
+    let capacityRestored = false;
+
+    if (booking.bookingStatus === "CONFIRMED" && booking.event) {
+      /**
+       * ---------------------------------------------------
+       * Atomically Restore Event Capacity
+       * ---------------------------------------------------
+       * Only if event still exists and not deleted
+       * Ensure ticketsSold never goes negative
+       */
+
+      if (!booking.event.isDeleted) {
+        const updatedEvent = await Event.findOneAndUpdate(
+          {
+            _id: booking.event._id,
+            ticketsSold: { $gte: booking.quantity },
+          },
+          {
+            $inc: {
+              ticketsSold: -booking.quantity,
+            },
+          },
+          {
+            new: true,
+            session,
+          },
+        );
+
+        if (updatedEvent) {
+          capacityRestored = true;
+        }
+      }
+    }
+
+    /**
+     * ---------------------------------------------------
+     * Delete Booking
+     * ---------------------------------------------------
+     * Hard delete from database
+     * No soft delete fields in Booking model
+     */
+
+    await Booking.deleteOne({ _id: booking._id }).session(session);
+
+    /**
+     * ---------------------------------------------------
+     * Commit Transaction
+     * ---------------------------------------------------
+     * All operations succeeded
+     * Changes are permanent
+     */
+
+    await session.commitTransaction();
+
+    /**
+     * ---------------------------------------------------
+     * Invalidate Cache
+     * ---------------------------------------------------
+     * Clear all booking-related caches
+     * Uses existing invalidateBookingCache helper
+     */
+
+    try {
+      await invalidateBookingCache({
+        bookingId: deletedBookingData.bookingId,
+        userId: deletedBookingData.userId,
+        organizerId: deletedBookingData.organizerId,
+        eventId: deletedBookingData.eventId,
+      });
+    } catch (cacheError) {
+      // Redis failure should not affect successful deletion
+      console.error("Cache invalidation failed after deletion:", cacheError);
+    }
+
+    /**
+     * ---------------------------------------------------
+     * Invalidate Event Cache
+     * ---------------------------------------------------
+     * If capacity was restored, event cache needs update
+     */
+
+    if (capacityRestored && booking.event.slug) {
+      try {
+        await invalidateEventCache(booking.event.slug);
+        await invalidateApprovedEventsCache();
+      } catch (cacheError) {
+        console.error("Event cache invalidation failed:", cacheError);
+      }
+    }
+
+    /**
+     * ---------------------------------------------------
+     * Success Response
+     * ---------------------------------------------------
+     * Return deleted booking info (for audit logs)
+     * Ready for future audit trail integration
+     */
+
+    return res.status(200).json({
+      success: true,
+      message: "Booking deleted successfully.",
+      data: {
+        bookingId: deletedBookingData.bookingId,
+        ticketCode: deletedBookingData.ticketCode,
+        quantity: deletedBookingData.quantity,
+        capacityRestored,
+        deletedBy: loggedInUserId.toString(),
+        deletedAt: new Date(),
+      },
+    });
+  } catch (error) {
+    /**
+     * ---------------------------------------------------
+     * Transaction Rollback
+     * ---------------------------------------------------
+     * Any error rolls back all changes
+     * Booking remains in database
+     */
+
+    await session.abortTransaction();
+
+    console.error("Delete Booking Error:", error);
+
+    /**
+     * ---------------------------------------------------
+     * Error Response
+     * ---------------------------------------------------
+     * Never expose internal error details
+     * Return generic user-friendly message
+     */
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to delete booking. Please try again.",
+    });
+  } finally {
+    /**
+     * ---------------------------------------------------
+     * Session Cleanup
+     * ---------------------------------------------------
+     * CRITICAL: Always end session to prevent memory leaks
+     * Runs whether transaction succeeds or fails
+     */
+
+    await session.endSession();
+  }
+};
