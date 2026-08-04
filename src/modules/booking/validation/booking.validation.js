@@ -37,7 +37,7 @@ export const createBookingSchema = z.object({
  */
 export const cancelBookingSchema = z.object({
   params: z.object({
-    bookingId: objectIdSchema,
+    bookingId: z.string().min(5, "Invalid Booking ID"),
   }),
 });
 
@@ -48,7 +48,7 @@ export const cancelBookingSchema = z.object({
  */
 export const bookingIdParamSchema = z.object({
   params: z.object({
-    bookingId: objectIdSchema,
+    bookingId: z.string().min(5, "Invalid Booking ID"),
   }),
 });
 
