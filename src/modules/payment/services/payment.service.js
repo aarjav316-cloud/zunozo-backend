@@ -187,7 +187,7 @@ export const createOrder = async ({ eventId, quantity, userId }) => {
    * Receipt uses a unique identifier for traceability.
    */
 
-  const receipt = `rcpt_${event._id.toString()}_${Date.now()}`;
+  const receipt = `rcpt_${event._id.toString().substring(18)}_${Date.now()}`;
 
   let razorpayOrder;
 
