@@ -1,5 +1,5 @@
 //cache file
-import { redisClient } from "../../../config/redis";
+import { redisClient } from "../../../config/redis.js";
 
 const BOOKING_CACHE_TTL = 60 * 5;
 

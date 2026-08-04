@@ -1,137 +1,153 @@
 import crypto from "crypto";
+import mongoose from "mongoose";
 
 import razorpay from "../../../config/razorpay.js";
 
-import Booking from "../../booking/model/booking.model.js";
+import Event from "../../event/models/event.model.js";
 import Payment from "../model/payment.model.js";
 
-/**
- * =====================================================
- * CREATE PAYMENT RECORD
- * =====================================================
- * Internal helper to persist a new Payment document
- * after a Razorpay order is successfully created.
- * =====================================================
- */
-
-const createPaymentRecord = async ({
-  booking,
-  userId,
-  razorpayOrder,
-}) => {
-  const payment = await Payment.create({
-    booking: booking._id,
-    user: userId,
-    amount: razorpayOrder.amount,
-    currency: razorpayOrder.currency,
-    razorpayOrderId: razorpayOrder.id,
-    status: "CREATED",
-    receipt: razorpayOrder.receipt,
-  });
-
-  return payment;
-};
+import { createBookingFromPayment } from "../../booking/services/booking.service.js";
 
 /**
  * =====================================================
- * UPDATE BOOKING AFTER SUCCESSFUL PAYMENT
+ * CREATE RAZORPAY ORDER (Payment-First)
  * =====================================================
- * Sets the booking paymentStatus to PAID.
- * Called only after signature verification succeeds.
- * =====================================================
- */
-
-const updateBookingAfterSuccess = async (bookingId) => {
-  const booking = await Booking.findByIdAndUpdate(
-    bookingId,
-    {
-      paymentStatus: "PAID",
-    },
-    {
-      new: true,
-    },
-  );
-
-  return booking;
-};
-
-/**
- * =====================================================
- * CREATE RAZORPAY ORDER
- * =====================================================
- * Validates the booking, creates a Razorpay order via
- * their Orders API, and persists a Payment document.
+ * Validates the event, calculates amount server-side,
+ * creates a Razorpay order, and persists a Payment
+ * document with event/quantity metadata.
+ *
+ * NO Booking is created at this stage.
  *
  * Throws errors with statusCode for the controller
  * to return proper HTTP responses.
  * =====================================================
  */
 
-export const createOrder = async (bookingId, userId) => {
+export const createOrder = async ({ eventId, quantity, userId }) => {
   /**
    * ---------------------------------------------------
-   * Fetch Booking
+   * Fetch Event
    * ---------------------------------------------------
    */
 
-  const booking = await Booking.findById(bookingId);
+  const event = await Event.findById(eventId);
 
-  if (!booking) {
-    const error = new Error("Booking not found.");
+  if (!event) {
+    const error = new Error("Event not found.");
     error.statusCode = 404;
     throw error;
   }
 
   /**
    * ---------------------------------------------------
-   * Authorization Check
+   * Event Status Validation
    * ---------------------------------------------------
-   * Ensure the booking belongs to the logged-in user.
    */
 
-  if (booking.user.toString() !== userId.toString()) {
-    const error = new Error("You are not authorized to pay for this booking.");
-    error.statusCode = 403;
+  if (event.isDeleted) {
+    const error = new Error("This event is no longer available.");
+    error.statusCode = 404;
     throw error;
   }
 
-  /**
-   * ---------------------------------------------------
-   * Payment Status Check
-   * ---------------------------------------------------
-   * Only allow payment for bookings with UNPAID status.
-   * Prevents paying for already paid or refunded bookings.
-   */
-
-  if (booking.paymentStatus !== "UNPAID") {
-    const error = new Error("Payment has already been completed for this booking.");
+  if (event.status !== "APPROVED") {
+    const error = new Error("Bookings are not available for this event.");
     error.statusCode = 400;
     throw error;
   }
 
   /**
    * ---------------------------------------------------
-   * Booking Status Check
+   * Free Event Guard
    * ---------------------------------------------------
-   * Only allow payment for CONFIRMED bookings.
-   * Cancelled or expired bookings cannot be paid.
+   * Free events should use the direct booking flow,
+   * not the payment flow.
    */
 
-  if (booking.bookingStatus !== "CONFIRMED") {
-    const error = new Error("This booking is not eligible for payment.");
+  if (event.isFree) {
+    const error = new Error("This event is free. No payment required.");
     error.statusCode = 400;
     throw error;
   }
+
+  /**
+   * ---------------------------------------------------
+   * Booking Deadline Validation
+   * ---------------------------------------------------
+   */
+
+  const now = new Date();
+
+  if (event.bookingDeadline && now > event.bookingDeadline) {
+    const error = new Error("Booking deadline has passed.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  /**
+   * ---------------------------------------------------
+   * Event Already Started
+   * ---------------------------------------------------
+   */
+
+  if (now >= event.startDate) {
+    const error = new Error("Bookings are closed. Event has already started.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  /**
+   * ---------------------------------------------------
+   * Ticket Quantity Validation
+   * ---------------------------------------------------
+   */
+
+  if (quantity > event.maxTicketsPerBooking) {
+    const error = new Error(
+      `Maximum ${event.maxTicketsPerBooking} tickets can be booked at once.`,
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+
+  /**
+   * ---------------------------------------------------
+   * Capacity Validation
+   * ---------------------------------------------------
+   */
+
+  const availableTickets = event.capacity - event.ticketsSold;
+
+  if (availableTickets <= 0) {
+    const error = new Error("This event is sold out.");
+    error.statusCode = 409;
+    throw error;
+  }
+
+  if (quantity > availableTickets) {
+    const error = new Error(`Only ${availableTickets} ticket(s) left.`);
+    error.statusCode = 409;
+    throw error;
+  }
+
+  /**
+   * ---------------------------------------------------
+   * Price Calculation (Server-Side)
+   * ---------------------------------------------------
+   * SECURITY: Never trust frontend pricing.
+   * Always calculate from the Event document.
+   */
+
+  const pricePerTicket = event.price;
+  const totalAmount = pricePerTicket * quantity;
+  const amountInPaise = Math.round(totalAmount * 100);
 
   /**
    * ---------------------------------------------------
    * Minimum Amount Validation
    * ---------------------------------------------------
    * Razorpay requires minimum 100 paise (₹1).
-   * totalAmount is stored in rupees, convert to paise.
    */
-
-  const amountInPaise = Math.round(booking.totalAmount * 100);
 
   if (amountInPaise < 100) {
     const error = new Error("Amount must be at least ₹1.");
@@ -144,12 +160,14 @@ export const createOrder = async (bookingId, userId) => {
    * Duplicate Order Check
    * ---------------------------------------------------
    * Prevent creating multiple Razorpay orders for the
-   * same booking. If an active (CREATED) payment exists,
-   * return the existing order details instead.
+   * same user + event + quantity combination when an
+   * active (CREATED) payment already exists.
    */
 
   const existingPayment = await Payment.findOne({
-    booking: booking._id,
+    event: event._id,
+    user: userId,
+    quantity,
     status: "CREATED",
   });
 
@@ -166,11 +184,10 @@ export const createOrder = async (bookingId, userId) => {
    * ---------------------------------------------------
    * Create Razorpay Order
    * ---------------------------------------------------
-   * Calls Razorpay Orders API.
-   * Receipt uses booking ObjectId for traceability.
+   * Receipt uses a unique identifier for traceability.
    */
 
-  const receipt = `rcpt_${booking._id.toString()}`;
+  const receipt = `rcpt_${event._id.toString()}_${Date.now()}`;
 
   let razorpayOrder;
 
@@ -183,7 +200,9 @@ export const createOrder = async (bookingId, userId) => {
   } catch (razorpayError) {
     console.error("Razorpay Order Creation Failed:", razorpayError);
 
-    const error = new Error("Unable to create payment order. Please try again.");
+    const error = new Error(
+      "Unable to create payment order. Please try again.",
+    );
     error.statusCode = 502;
     throw error;
   }
@@ -192,14 +211,19 @@ export const createOrder = async (bookingId, userId) => {
    * ---------------------------------------------------
    * Persist Payment Record
    * ---------------------------------------------------
-   * Save the Payment document with CREATED status.
-   * Links to both booking and user for audit trail.
+   * Save Payment with event + quantity metadata.
+   * booking is NULL — will be linked after verification.
    */
 
-  await createPaymentRecord({
-    booking,
-    userId,
-    razorpayOrder,
+  await Payment.create({
+    event: event._id,
+    user: userId,
+    quantity,
+    amount: razorpayOrder.amount,
+    currency: razorpayOrder.currency,
+    razorpayOrderId: razorpayOrder.id,
+    status: "CREATED",
+    receipt: razorpayOrder.receipt,
   });
 
   /**
@@ -220,14 +244,20 @@ export const createOrder = async (bookingId, userId) => {
 
 /**
  * =====================================================
- * VERIFY RAZORPAY PAYMENT
+ * VERIFY RAZORPAY PAYMENT (Payment-First)
  * =====================================================
- * Verifies the HMAC SHA256 signature sent by Razorpay
- * after a successful payment. Updates both the Payment
- * document and the associated Booking.
+ * Verifies the HMAC SHA256 signature, updates the
+ * Payment record, then invokes booking creation
+ * via the Booking service.
  *
- * Throws errors with statusCode for the controller
- * to return proper HTTP responses.
+ * The booking is created ONLY after successful payment.
+ *
+ * Uses a MongoDB transaction to ensure atomicity:
+ * - Payment status update
+ * - Booking creation (delegated to booking service)
+ * - Payment → Booking linkage
+ *
+ * If any step fails, everything rolls back.
  * =====================================================
  */
 
@@ -242,7 +272,6 @@ export const verifyPayment = async ({
    * ---------------------------------------------------
    * Razorpay signs: "order_id|payment_id"
    * using your RAZORPAY_KEY_SECRET as the HMAC key.
-   * Compare the generated digest with the received one.
    */
 
   const expectedSignature = crypto
@@ -260,7 +289,6 @@ export const verifyPayment = async ({
    * ---------------------------------------------------
    * Fetch Payment Record
    * ---------------------------------------------------
-   * Find the Payment document by razorpayOrderId.
    */
 
   const payment = await Payment.findOne({
@@ -288,41 +316,109 @@ export const verifyPayment = async ({
 
   /**
    * ---------------------------------------------------
-   * Update Payment Document
+   * Start MongoDB Transaction
    * ---------------------------------------------------
-   * Set status to PAID, store Razorpay identifiers,
-   * and record the payment timestamp.
+   * Wraps payment update + booking creation in a single
+   * transaction for atomicity.
    */
 
-  payment.razorpayPaymentId = razorpay_payment_id;
-  payment.razorpaySignature = razorpay_signature;
-  payment.status = "PAID";
-  payment.paidAt = new Date();
+  const session = await mongoose.startSession();
 
-  await payment.save();
+  try {
+    session.startTransaction();
 
-  /**
-   * ---------------------------------------------------
-   * Update Booking Payment Status
-   * ---------------------------------------------------
-   * Mark the associated booking as PAID.
-   */
+    /**
+     * ---------------------------------------------------
+     * Update Payment Document
+     * ---------------------------------------------------
+     * Set status to PAID, store Razorpay identifiers,
+     * and record the payment timestamp.
+     */
 
-  const updatedBooking = await updateBookingAfterSuccess(payment.booking);
+    payment.razorpayPaymentId = razorpay_payment_id;
+    payment.razorpaySignature = razorpay_signature;
+    payment.status = "PAID";
+    payment.paidAt = new Date();
 
-  return {
-    paymentId: payment._id,
-    razorpayPaymentId: payment.razorpayPaymentId,
-    razorpayOrderId: payment.razorpayOrderId,
-    amount: payment.amount,
-    currency: payment.currency,
-    status: payment.status,
-    paidAt: payment.paidAt,
-    booking: {
-      _id: updatedBooking._id,
-      bookingId: updatedBooking.bookingId,
-      bookingStatus: updatedBooking.bookingStatus,
-      paymentStatus: updatedBooking.paymentStatus,
-    },
-  };
+    await payment.save({ session });
+
+    /**
+     * ---------------------------------------------------
+     * Create Booking via Booking Service
+     * ---------------------------------------------------
+     * Delegates to the Booking module's service function.
+     * Passes the transaction session so booking creation
+     * is part of the same atomic operation.
+     *
+     * The booking service handles:
+     * - Capacity validation
+     * - Atomic ticket reservation
+     * - Counter increment
+     * - Booking ID generation
+     * - Ticket Code generation
+     * - Event ticketsSold update
+     */
+
+    const bookingResult = await createBookingFromPayment({
+      eventId: payment.event.toString(),
+      userId: payment.user.toString(),
+      quantity: payment.quantity,
+      paymentId: payment._id.toString(),
+      session,
+    });
+
+    /**
+     * ---------------------------------------------------
+     * Link Booking to Payment
+     * ---------------------------------------------------
+     * Now that booking exists, link it to the payment
+     * record for audit trail and future lookups.
+     */
+
+    payment.booking = bookingResult.booking._id;
+    await payment.save({ session });
+
+    /**
+     * ---------------------------------------------------
+     * Commit Transaction
+     * ---------------------------------------------------
+     * Both payment update and booking creation succeeded.
+     */
+
+    await session.commitTransaction();
+
+    /**
+     * ---------------------------------------------------
+     * Return Verified Payment + Booking Data
+     * ---------------------------------------------------
+     */
+
+    return {
+      paymentId: payment._id,
+      razorpayPaymentId: payment.razorpayPaymentId,
+      razorpayOrderId: payment.razorpayOrderId,
+      amount: payment.amount,
+      currency: payment.currency,
+      status: payment.status,
+      paidAt: payment.paidAt,
+      booking: bookingResult.booking,
+      event: bookingResult.event,
+    };
+  } catch (error) {
+    /**
+     * ---------------------------------------------------
+     * Transaction Rollback
+     * ---------------------------------------------------
+     * If booking creation fails, payment status update
+     * is also rolled back. No partial state.
+     */
+
+    if (session.inTransaction()) {
+      await session.abortTransaction();
+    }
+
+    throw error;
+  } finally {
+    await session.endSession();
+  }
 };

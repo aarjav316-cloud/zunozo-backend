@@ -2,9 +2,30 @@ import mongoose from "mongoose";
 
 const paymentSchema = new mongoose.Schema(
   {
+    /**
+     * ---------------------------------------------------
+     * Booking Reference (Optional)
+     * ---------------------------------------------------
+     * In the payment-first architecture, booking does NOT
+     * exist when the payment is created. It is linked AFTER
+     * successful payment verification and booking creation.
+     */
     booking: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Booking",
+      default: null,
+    },
+
+    /**
+     * ---------------------------------------------------
+     * Event Reference (Required)
+     * ---------------------------------------------------
+     * Always stored at order creation time.
+     * Used to create booking after payment verification.
+     */
+    event: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Event",
       required: true,
     },
 
@@ -12,6 +33,20 @@ const paymentSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
+    },
+
+    /**
+     * ---------------------------------------------------
+     * Booking Metadata
+     * ---------------------------------------------------
+     * Stored at order creation so that the booking can be
+     * created after payment verification without needing
+     * the client to re-send these values.
+     */
+    quantity: {
+      type: Number,
+      required: true,
+      min: 1,
     },
 
     amount: {
@@ -95,8 +130,11 @@ paymentSchema.index({ razorpayPaymentId: 1 });
 // Receipt Lookup
 paymentSchema.index({ receipt: 1 }, { unique: true });
 
-// Booking Lookup (1:1 relationship)
-paymentSchema.index({ booking: 1 });
+// Booking Lookup (1:1 relationship, sparse — null until booking created)
+paymentSchema.index({ booking: 1 }, { sparse: true });
+
+// Event Lookup
+paymentSchema.index({ event: 1 });
 
 // User Payment History
 paymentSchema.index({ user: 1, createdAt: -1 });

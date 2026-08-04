@@ -2,7 +2,7 @@ import * as paymentService from "../services/payment.service.js";
 
 /**
  * =====================================================
- * CREATE RAZORPAY ORDER
+ * CREATE RAZORPAY ORDER (Payment-First)
  * =====================================================
  * POST /api/v1/payments/create-order
  *
@@ -10,16 +10,17 @@ import * as paymentService from "../services/payment.service.js";
  * payment.service.js
  *
  * Flow:
- * 1. Extract bookingId from validated request body
+ * 1. Extract eventId + quantity from validated request body
  * 2. Delegate to paymentService.createOrder()
  * 3. Return orderId, amount, currency, key
  *
  * The service handles:
- * - Booking existence check
- * - Ownership authorization
- * - Payment status validation
- * - Booking status validation
- * - Minimum amount validation
+ * - Event existence check
+ * - Event availability validation
+ * - Booking deadline validation
+ * - Capacity validation
+ * - Quantity validation
+ * - Server-side price calculation
  * - Duplicate order prevention
  * - Razorpay API call
  * - Payment record creation
@@ -30,9 +31,13 @@ export const createOrder = async (req, res) => {
   try {
     const userId = req.user._id;
 
-    const { bookingId } = req.body;
+    const { eventId, quantity } = req.body;
 
-    const orderData = await paymentService.createOrder(bookingId, userId);
+    const orderData = await paymentService.createOrder({
+      eventId,
+      quantity,
+      userId,
+    });
 
     return res.status(201).json({
       success: true,
@@ -55,7 +60,7 @@ export const createOrder = async (req, res) => {
 
 /**
  * =====================================================
- * VERIFY RAZORPAY PAYMENT
+ * VERIFY RAZORPAY PAYMENT (Payment-First)
  * =====================================================
  * POST /api/v1/payments/verify
  *
@@ -65,14 +70,15 @@ export const createOrder = async (req, res) => {
  * Flow:
  * 1. Extract Razorpay fields from validated request body
  * 2. Delegate to paymentService.verifyPayment()
- * 3. Return verified payment details
+ * 3. Return verified payment + created booking details
  *
  * The service handles:
  * - HMAC SHA256 signature verification
  * - Payment record lookup
  * - Duplicate verification prevention
  * - Payment status update (CREATED → PAID)
- * - Booking paymentStatus update (UNPAID → PAID)
+ * - Booking creation (via Booking service)
+ * - Payment ↔ Booking linkage
  * =====================================================
  */
 
@@ -92,7 +98,7 @@ export const verifyPayment = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Payment verified successfully.",
+      message: "Payment verified and booking created successfully.",
       data: paymentData,
     });
   } catch (error) {

@@ -14,10 +14,22 @@ const objectIdSchema = z
  * ==========================
  * Create Razorpay Order
  * ==========================
+ * Payment-first architecture:
+ * Accepts eventId + quantity instead of bookingId.
+ * No booking exists at this point.
  */
 export const createOrderSchema = z.object({
   body: z.object({
-    bookingId: objectIdSchema,
+    eventId: objectIdSchema,
+
+    quantity: z
+      .number({
+        required_error: "Quantity is required",
+        invalid_type_error: "Quantity must be a number",
+      })
+      .int("Quantity must be an integer")
+      .min(1, "Minimum 1 ticket is required")
+      .max(10, "Maximum 10 tickets allowed per booking"),
   }),
 });
 
@@ -25,6 +37,7 @@ export const createOrderSchema = z.object({
  * ==========================
  * Verify Razorpay Payment
  * ==========================
+ * Unchanged — Razorpay fields remain the same.
  */
 export const verifyPaymentSchema = z.object({
   body: z.object({
