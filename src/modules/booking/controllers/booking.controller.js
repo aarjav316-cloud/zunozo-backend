@@ -15,6 +15,7 @@ import {
 } from "../../event/cache/event.cache.js";
 
 import { createBookingFromPayment } from "../services/booking.service.js";
+import { generateQRCode } from "../../../utils/generateQRCode.js";
 
 /**
  * =====================================================
@@ -821,6 +822,21 @@ export const getBookingById = async (req, res) => {
 
     /**
      * ---------------------------------------------------
+     * QR Code Generation (QR Ticket System)
+     * ---------------------------------------------------
+     * Only generate QR code for valid, confirmed and paid bookings.
+     */
+    let qrCode = null;
+    if (
+      booking.bookingStatus === "CONFIRMED" &&
+      booking.paymentStatus === "PAID" &&
+      booking.ticketCode
+    ) {
+      qrCode = await generateQRCode(booking.ticketCode);
+    }
+
+    /**
+     * ---------------------------------------------------
      * Build Complete Response
      * ---------------------------------------------------
      * Return all details needed for:
@@ -838,6 +854,8 @@ export const getBookingById = async (req, res) => {
         // Booking Information
         bookingId: booking.bookingId,
         ticketCode: booking.ticketCode,
+        ticketStatus: booking.ticketStatus,
+        qrCode,
         quantity: booking.quantity,
         pricePerTicket: booking.pricePerTicket,
         totalAmount: booking.totalAmount,

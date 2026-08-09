@@ -317,3 +317,75 @@ export const getOrganizerById = async (req, res) => {
     message: "Not implemented yet.",
   });
 };
+
+/**
+ * @desc    Get dashboard statistics for the logged-in organizer
+ * @route   GET /api/v1/organizers/dashboard-stats
+ * @access  Protected (organizer)
+ */
+export const getDashboardStats = async (req, res) => {
+  try {
+    const organizerId = req.user._id;
+    const Event = mongoose.model("Event");
+    const Booking = mongoose.model("Booking");
+
+    // 1. Total Events
+    const totalEvents = await Event.countDocuments({
+      organizer: organizerId,
+      isDeleted: false,
+    });
+
+    // 2. Upcoming Events
+    const upcomingEvents = await Event.countDocuments({
+      organizer: organizerId,
+      isDeleted: false,
+      startDate: { $gte: new Date() },
+    });
+
+    // 3. Aggregate Bookings for Tickets Sold & Revenue
+    const stats = await Booking.aggregate([
+      {
+        $lookup: {
+          from: "events",
+          localField: "event",
+          foreignField: "_id",
+          as: "eventDoc",
+        },
+      },
+      { $unwind: "$eventDoc" },
+      {
+        $match: {
+          "eventDoc.organizer": organizerId,
+          bookingStatus: "CONFIRMED",
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          totalBookings: { $sum: 1 },
+          ticketsSold: { $sum: "$quantity" },
+          totalRevenue: { $sum: "$totalAmount" },
+        },
+      },
+    ]);
+
+    const globalStats = stats.length > 0 ? stats[0] : { totalBookings: 0, ticketsSold: 0, totalRevenue: 0 };
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        totalEvents,
+        upcomingEvents,
+        totalBookings: globalStats.totalBookings,
+        ticketsSold: globalStats.ticketsSold,
+        revenue: globalStats.totalRevenue,
+      },
+    });
+  } catch (error) {
+    console.error("Get Organizer Dashboard Stats Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+    });
+  }
+};

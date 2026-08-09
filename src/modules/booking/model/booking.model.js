@@ -10,10 +10,16 @@ const bookingSchema = new mongoose.Schema({
 
      ticketCode: {
       type: String,
-      required: true,
       unique: true,
+      sparse: true,
       uppercase: true,
       trim: true,
+    },
+
+    ticketStatus: {
+      type: String,
+      enum: ["VALID", "USED", "CANCELLED"],
+      default: "VALID",
     },
 
     
@@ -99,7 +105,7 @@ const bookingSchema = new mongoose.Schema({
 
 // Unique Identifiers
 bookingSchema.index({ bookingId: 1 }, { unique: true });
-bookingSchema.index({ ticketCode: 1 }, { unique: true });
+bookingSchema.index({ ticketCode: 1 }, { unique: true, sparse: true });
 
 // User Queries
 bookingSchema.index({ user: 1, createdAt: -1 });

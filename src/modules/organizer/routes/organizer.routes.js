@@ -5,6 +5,7 @@ import {
   getOrganizerProfile,
   updateOrganizerProfile,
   deleteOrganizerProfile,
+  getDashboardStats,
 } from "../controllers/organizer.controller.js";
 
 import { protect } from "../../../middleware/middleware.js";
@@ -45,6 +46,12 @@ router.patch(
   authorizeRoles("organizer"),
   validate(updateOrganizerProfileSchema),
   updateOrganizerProfile,
+);
+router.get(
+  "/dashboard-stats",
+  protect,
+  authorizeRoles("organizer"),
+  getDashboardStats
 );
 router.delete(
   "/me",

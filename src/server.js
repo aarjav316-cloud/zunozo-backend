@@ -9,6 +9,7 @@ import eventRoutes from "./modules/event/routes/event.routes.js";
 import organizerRoutes from "./modules/organizer/routes/organizer.routes.js";
 import bookingRoutes from "./modules/booking/routes/booking.routes.js";
 import paymentRoutes from "./modules/payment/routes/payment.routes.js";
+import adminRoutes from "./modules/admin/routes/admin.routes.js";
 
 import connectDb from "./config/db.js";
 import { connectRedis } from "./config/redis.js";
@@ -36,6 +37,7 @@ app.use("/api/v1/events", eventRoutes);
 app.use("/api/v1/organizers", organizerRoutes);
 app.use("/api/v1/bookings", bookingRoutes);
 app.use("/api/v1/payments", paymentRoutes);
+app.use("/api/v1/admin", adminRoutes);
 
 // Debug middleware
 app.use((req, res, next) => {
