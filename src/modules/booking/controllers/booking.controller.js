@@ -1434,19 +1434,25 @@ export const checkInBooking = async (req, res) => {
 
     /**
      * ---------------------------------------------------
-     * Already Checked In
+     * Ticket Status Validation
      * ---------------------------------------------------
-     * Prevent duplicate check-in
-     * Return 400 with informative message
+     * Ensure ticket is VALID before proceeding.
      */
 
-    if (booking.checkedIn) {
+    if (booking.ticketStatus === "USED" || booking.checkedIn) {
       return res.status(400).json({
         success: false,
-        message: "This booking has already been checked in.",
+        message: "Ticket has already been used.",
         data: {
           checkedInAt: booking.checkedInAt,
         },
+      });
+    }
+
+    if (booking.ticketStatus === "CANCELLED") {
+      return res.status(400).json({
+        success: false,
+        message: "Ticket is cancelled.",
       });
     }
 
@@ -1474,16 +1480,33 @@ export const checkInBooking = async (req, res) => {
 
     /**
      * ---------------------------------------------------
-     * Update Booking - Check In
+     * Update Booking - Check In (Atomic)
      * ---------------------------------------------------
-     * Mark booking as checked in with timestamp
-     * No transaction needed (single document update)
+     * Mark ticket as used and checked in with timestamp.
+     * Prevents duplicate check-ins if scanned simultaneously.
      */
 
-    booking.checkedIn = true;
-    booking.checkedInAt = now;
+    const updatedBooking = await Booking.findOneAndUpdate(
+      {
+        _id: booking._id,
+        ticketStatus: "VALID", // Atomic condition: must be VALID
+      },
+      {
+        $set: {
+          ticketStatus: "USED",
+          checkedIn: true,
+          checkedInAt: now,
+        },
+      },
+      { new: true }
+    );
 
-    await booking.save();
+    if (!updatedBooking) {
+      return res.status(400).json({
+        success: false,
+        message: "Ticket has already been used.",
+      });
+    }
 
     /**
      * ---------------------------------------------------
@@ -1525,9 +1548,10 @@ export const checkInBooking = async (req, res) => {
       data: {
         bookingId: booking.bookingId,
         ticketCode: booking.ticketCode,
+        ticketStatus: updatedBooking.ticketStatus,
         quantity: booking.quantity,
-        checkedIn: booking.checkedIn,
-        checkedInAt: booking.checkedInAt,
+        checkedIn: updatedBooking.checkedIn,
+        checkedInAt: updatedBooking.checkedInAt,
         user: {
           _id: booking.user._id,
           name: booking.user.name,

@@ -3,6 +3,7 @@ import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
 import helmet from "helmet";
 import cors from "cors";
+import { createServer } from "http";
 
 import authRoutes from "./routes/auth.routes.js";
 import eventRoutes from "./modules/event/routes/event.routes.js";
@@ -13,12 +14,16 @@ import adminRoutes from "./modules/admin/routes/admin.routes.js";
 
 import connectDb from "./config/db.js";
 import { connectRedis } from "./config/redis.js";
+import { initSocket } from "./config/socket.js";
 
 import passport from "./config/passport.js";
 
 dotenv.config();
 
 const app = express();
+const httpServer = createServer(app);
+
+initSocket(httpServer);
 
 app.use(
   cors({
@@ -56,7 +61,7 @@ const startServer = async () => {
     await connectDb();
     await connectRedis();
 
-    app.listen(PORT, () => {
+    httpServer.listen(PORT, () => {
       console.log(`Server running on ${PORT}`);
     });
   } catch (error) {

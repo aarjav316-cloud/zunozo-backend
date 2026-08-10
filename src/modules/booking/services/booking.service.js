@@ -15,6 +15,8 @@ import {
   invalidateApprovedEventsCache,
 } from "../../event/cache/event.cache.js";
 
+import { getIO } from "../../../config/socket.js";
+
 /**
  * =====================================================
  * CREATE BOOKING FROM VERIFIED PAYMENT
@@ -324,6 +326,46 @@ export const createBookingFromPayment = async ({
       await invalidateApprovedEventsCache();
     } catch (cacheError) {
       console.error("Cache invalidation failed:", cacheError);
+    }
+
+    /**
+     * ---------------------------------------------------
+     * Socket.io Real-Time Notifications (post-commit)
+     * ---------------------------------------------------
+     * Emitted after DB commit and cache invalidation.
+     * Fire-and-forget — Socket.io failure must never
+     * block the booking response.
+     */
+
+    try {
+      const io = getIO();
+
+      // Notify the booking user
+      io.to(`user:${userId.toString()}`).emit("booking:confirmed", {
+        bookingId: booking.bookingId,
+        eventId: event._id.toString(),
+        eventTitle: event.title,
+        quantity: booking.quantity,
+        totalAmount: booking.totalAmount,
+        bookingStatus: booking.bookingStatus,
+        paymentStatus: booking.paymentStatus,
+        createdAt: booking.createdAt,
+      });
+
+      // Notify the event organizer
+      io.to(`organizer:${event.organizer.toString()}`).emit("booking:new", {
+        bookingId: booking.bookingId,
+        eventId: event._id.toString(),
+        eventTitle: event.title,
+        quantity: booking.quantity,
+        totalAmount: booking.totalAmount,
+        bookingStatus: booking.bookingStatus,
+        paymentStatus: booking.paymentStatus,
+        createdAt: booking.createdAt,
+      });
+    } catch (socketError) {
+      // Socket.io failure is non-critical
+      console.error("[Socket.io] Booking emit failed:", socketError.message);
     }
 
     /**
