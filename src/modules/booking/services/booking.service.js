@@ -16,6 +16,7 @@ import {
 } from "../../event/cache/event.cache.js";
 
 import { getIO } from "../../../config/socket.js";
+import { createNotification } from "../../notification/services/notification.service.js";
 
 /**
  * =====================================================
@@ -366,6 +367,43 @@ export const createBookingFromPayment = async ({
     } catch (socketError) {
       // Socket.io failure is non-critical
       console.error("[Socket.io] Booking emit failed:", socketError.message);
+    }
+
+    /**
+     * ---------------------------------------------------
+     * Persistent Notifications (post-commit)
+     * ---------------------------------------------------
+     * Create database-backed notifications for offline
+     * users. Fire-and-forget — failure must not block
+     * the booking response.
+     */
+
+    try {
+      // User: Booking confirmed
+      await createNotification({
+        recipientId: userId,
+        type: "BOOKING_CONFIRMED",
+        title: "Booking Confirmed",
+        message: `Your booking for ${event.title} (${booking.quantity} ticket${booking.quantity > 1 ? "s" : ""}) has been confirmed.`,
+        relatedEntity: {
+          entityType: "Booking",
+          entityId: booking._id,
+        },
+      });
+
+      // Organizer: New booking received
+      await createNotification({
+        recipientId: event.organizer,
+        type: "NEW_BOOKING",
+        title: "New Booking",
+        message: `${booking.quantity} ticket${booking.quantity > 1 ? "s" : ""} booked for ${event.title}.`,
+        relatedEntity: {
+          entityType: "Booking",
+          entityId: booking._id,
+        },
+      });
+    } catch (notifError) {
+      console.error("[Notification] Booking notification failed:", notifError.message);
     }
 
     /**

@@ -16,6 +16,8 @@ import {
 
 import { createBookingFromPayment } from "../services/booking.service.js";
 import { generateQRCode } from "../../../utils/generateQRCode.js";
+import { getIO } from "../../../config/socket.js";
+import { createNotification } from "../../notification/services/notification.service.js";
 
 /**
  * =====================================================
@@ -1532,12 +1534,74 @@ export const checkInBooking = async (req, res) => {
 
     /**
      * ---------------------------------------------------
+     * Socket.io Real-Time Check-in Notifications
+     * ---------------------------------------------------
+     * Emitted after DB update and cache invalidation.
+     * Fire-and-forget — Socket.io failure must never
+     * block the check-in response.
+     */
+
+    try {
+      const io = getIO();
+
+      // Notify the ticket-owning user
+      io.to(`user:${booking.user._id.toString()}`).emit("ticket:updated", {
+        bookingId: booking.bookingId,
+        ticketCode: booking.ticketCode,
+        ticketStatus: updatedBooking.ticketStatus,
+        checkedIn: updatedBooking.checkedIn,
+        checkedInAt: updatedBooking.checkedInAt,
+        eventId: event._id.toString(),
+        eventTitle: event.title,
+      });
+
+      // Notify the event organizer
+      io.to(`organizer:${event.organizer.toString()}`).emit("ticket:checked-in", {
+        bookingId: booking.bookingId,
+        ticketCode: booking.ticketCode,
+        ticketStatus: updatedBooking.ticketStatus,
+        checkedIn: updatedBooking.checkedIn,
+        checkedInAt: updatedBooking.checkedInAt,
+        eventId: event._id.toString(),
+        eventTitle: event.title,
+        quantity: booking.quantity,
+        attendee: {
+          name: booking.user.name,
+        },
+      });
+    } catch (socketError) {
+      // Socket.io failure is non-critical
+      console.error("[Socket.io] Check-in emit failed:", socketError.message);
+    }
+
+    /**
+     * ---------------------------------------------------
+     * Persistent Notification (post check-in)
+     * ---------------------------------------------------
+     */
+
+    try {
+      await createNotification({
+        recipientId: booking.user._id,
+        type: "TICKET_CHECKED_IN",
+        title: "Ticket Checked In",
+        message: `Your ticket for ${event.title} has been checked in.`,
+        relatedEntity: {
+          entityType: "Booking",
+          entityId: booking._id,
+        },
+      });
+    } catch (notifError) {
+      console.error("[Notification] Check-in notification failed:", notifError.message);
+    }
+
+    /**
+     * ---------------------------------------------------
      * Success Response
      * ---------------------------------------------------
      * Return updated booking with attendee information
      * Ready for:
      * - QR Scanner display
-     * - Socket.IO real-time updates
      * - Attendance analytics
      * - Event capacity dashboard
      */

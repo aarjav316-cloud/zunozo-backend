@@ -1,6 +1,9 @@
 import Event from "../models/event.model.js";
 import generateSlug from "../utils/generateSlug.js";
 import { getApprovedEventsCache , setApprovedEventCache , invalidateApprovedEventsCache , getEventCache , setEventCache , invalidateEventCache } from "../cache/event.cache.js";
+import { createNotification } from "../../notification/services/notification.service.js";
+import { getIO } from "../../../config/socket.js";
+import User from "../../../models/user.model.js";
 
 
 export const createEvent = async (req, res) => {
@@ -21,6 +24,27 @@ export const createEvent = async (req, res) => {
       slug,
       status: "PENDING_REVIEW",
     });
+    // Notify admins about new event submission
+    try {
+      const admins = await User.find({ role: "admin", isDeleted: false }).select("_id").lean();
+      for (const admin of admins) {
+        await createNotification({
+          recipientId: admin._id,
+          type: "EVENT_SUBMITTED",
+          title: "New Event Submitted",
+          message: `"${event.title}" has been submitted for review.`,
+          relatedEntity: { entityType: "Event", entityId: event._id },
+        });
+      }
+      // Also emit a real-time event to the shared admin room
+      const io = getIO();
+      io.to("admin").emit("event:submitted", {
+        eventId: event._id.toString(),
+        eventTitle: event.title,
+      });
+    } catch (notifError) {
+      console.error("[Notification] Event submission notification failed:", notifError.message);
+    }
 
     return res.status(201).json({
       success: true,
@@ -262,6 +286,25 @@ export const reviewEvent = async (req,res) => {
 
     await invalidateApprovedEventsCache();
     await invalidateEventCache(event.slug);
+
+    // Notify organizer about review result
+    try {
+      const notifType = status === "APPROVED" ? "EVENT_APPROVED" : "EVENT_REJECTED";
+      const notifTitle = status === "APPROVED" ? "Event Approved" : "Event Rejected";
+      const notifMessage = status === "APPROVED"
+        ? `Your event "${event.title}" has been approved and is now live!`
+        : `Your event "${event.title}" has been rejected.${reviewComment ? " Reason: " + reviewComment : ""}`;
+
+      await createNotification({
+        recipientId: event.organizer,
+        type: notifType,
+        title: notifTitle,
+        message: notifMessage,
+        relatedEntity: { entityType: "Event", entityId: event._id },
+      });
+    } catch (notifError) {
+      console.error("[Notification] Event review notification failed:", notifError.message);
+    }
 
     return res.status(200).json({
       success: true,

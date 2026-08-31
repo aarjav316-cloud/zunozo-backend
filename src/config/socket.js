@@ -86,6 +86,12 @@ export const initSocket = (httpServer) => {
       console.log(`[Socket.io] Joined organizer room: ${organizerRoom}`);
     }
 
+    // Admins join a shared admin room for event review notifications
+    if (role === "admin") {
+      socket.join("admin");
+      console.log(`[Socket.io] Joined admin room`);
+    }
+
     socket.on("disconnect", (reason) => {
       console.log(`[Socket.io] Disconnected | User: ${userId} | Socket: ${socket.id} | Reason: ${reason}`);
     });

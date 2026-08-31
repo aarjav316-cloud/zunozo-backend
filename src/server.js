@@ -11,6 +11,7 @@ import organizerRoutes from "./modules/organizer/routes/organizer.routes.js";
 import bookingRoutes from "./modules/booking/routes/booking.routes.js";
 import paymentRoutes from "./modules/payment/routes/payment.routes.js";
 import adminRoutes from "./modules/admin/routes/admin.routes.js";
+import notificationRoutes from "./modules/notification/routes/notification.routes.js";
 
 import connectDb from "./config/db.js";
 import { connectRedis } from "./config/redis.js";
@@ -43,6 +44,7 @@ app.use("/api/v1/organizers", organizerRoutes);
 app.use("/api/v1/bookings", bookingRoutes);
 app.use("/api/v1/payments", paymentRoutes);
 app.use("/api/v1/admin", adminRoutes);
+app.use("/api/v1/notifications", notificationRoutes);
 
 // Debug middleware
 app.use((req, res, next) => {
