@@ -10,6 +10,7 @@ import {
   reviewEvent,
   updateEvent,
   deleteEvent,
+  searchEvents,
 } from "../controllers/event.controller.js";
 import { protect } from "../../../middleware/middleware.js";
 import validate from "../../../middleware/validate.middleware.js";
@@ -63,6 +64,8 @@ router.patch(
 );
 
 router.get("/", getApprovedEvents);
+
+router.get("/search", searchEvents);
 
 router.get("/:slug", getEventsBySlug);
 

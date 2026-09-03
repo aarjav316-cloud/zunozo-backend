@@ -412,3 +412,90 @@ export const getEventsBySlug = async (req,res) => {
 }
 
 
+export const searchEvents = async (req, res) => {
+  try {
+    const { q } = req.query;
+
+    // Validate search query
+    if (!q || typeof q !== "string" || !q.trim()) {
+      return res.status(200).json({
+        success: true,
+        count: 0,
+        events: [],
+      });
+    }
+
+    const searchTerm = q.trim();
+
+    // Sanitize for regex safety — escape special regex characters
+    const escapedTerm = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+    // Use aggregation pipeline to search by event title OR organizer name
+    const events = await Event.aggregate([
+      // Stage 1: Match only approved, non-deleted events
+      {
+        $match: {
+          status: "APPROVED",
+          isDeleted: false,
+        },
+      },
+      // Stage 2: Lookup organizer from Users collection
+      {
+        $lookup: {
+          from: "users",
+          localField: "organizer",
+          foreignField: "_id",
+          as: "organizerInfo",
+        },
+      },
+      // Stage 3: Unwind organizer (each event has exactly one organizer)
+      {
+        $unwind: {
+          path: "$organizerInfo",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      // Stage 4: Match by event title OR organizer name
+      {
+        $match: {
+          $or: [
+            { title: { $regex: escapedTerm, $options: "i" } },
+            { "organizerInfo.name": { $regex: escapedTerm, $options: "i" } },
+          ],
+        },
+      },
+      // Stage 5: Sort by start date
+      { $sort: { startDate: 1 } },
+      // Stage 6: Limit results
+      { $limit: 8 },
+      // Stage 7: Project only necessary fields
+      {
+        $project: {
+          title: 1,
+          slug: 1,
+          coverImage: 1,
+          category: 1,
+          startDate: 1,
+          isFree: 1,
+          price: 1,
+          "venue.city": 1,
+          "venue.state": 1,
+          organizerName: "$organizerInfo.name",
+        },
+      },
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      count: events.length,
+      events,
+    });
+  } catch (error) {
+    console.error("Search Events Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+    });
+  }
+};
