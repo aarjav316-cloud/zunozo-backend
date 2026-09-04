@@ -18,6 +18,8 @@ import { createEventSchema } from "../validation/event.validation.js";
 import { authorizeRoles } from "../../../middleware/rbac.middleware.js";
 import { updateEventSchema } from "../validation/updateEventSchema.js";
 import { reviewEventSchema } from "../validation/reviewEvent.validation.js";
+import upload from "../../../middleware/upload.middleware.js";
+import { parseFormDataFields } from "../../../middleware/parseFormData.middleware.js";
 
 const router = express.Router();
 
@@ -25,6 +27,8 @@ router.post(
   "/",
   protect,
   authorizeRoles("organizer"),
+  upload.single("coverImageFile"),
+  parseFormDataFields,
   validate(createEventSchema),
   createEvent,
 );
@@ -42,6 +46,8 @@ router.patch(
   "/:eventId",
   protect,
   authorizeRoles("organizer"),
+  upload.single("coverImageFile"),
+  parseFormDataFields,
   validate(updateEventSchema),
   updateEvent,
 );

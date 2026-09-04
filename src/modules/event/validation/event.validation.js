@@ -54,7 +54,8 @@ export const createEventSchema = z.object({
 
   coverImage: z
     .string()
-    .trim(),
+    .trim()
+    .optional(),
 
   galleryImages: z
     .array(z.string())

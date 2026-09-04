@@ -4,6 +4,7 @@ import cookieParser from "cookie-parser";
 import helmet from "helmet";
 import cors from "cors";
 import { createServer } from "http";
+import multer from "multer";
 
 import authRoutes from "./routes/auth.routes.js";
 import eventRoutes from "./modules/event/routes/event.routes.js";
@@ -46,10 +47,34 @@ app.use("/api/v1/payments", paymentRoutes);
 app.use("/api/v1/admin", adminRoutes);
 app.use("/api/v1/notifications", notificationRoutes);
 
+
 // Debug middleware
 app.use((req, res, next) => {
   console.log(`${req.method} ${req.path}`);
   next();
+});
+
+// Multer error handler
+app.use((err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return res.status(400).json({
+        success: false,
+        message: "Image file is too large. Maximum size is 5MB.",
+      });
+    }
+    return res.status(400).json({
+      success: false,
+      message: err.message,
+    });
+  }
+  if (err.message && err.message.includes("Invalid file type")) {
+    return res.status(400).json({
+      success: false,
+      message: err.message,
+    });
+  }
+  next(err);
 });
 
 app.get("/", (req, res) => {

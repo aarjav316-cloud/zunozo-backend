@@ -4,6 +4,29 @@ import { getApprovedEventsCache , setApprovedEventCache , invalidateApprovedEven
 import { createNotification } from "../../notification/services/notification.service.js";
 import { getIO } from "../../../config/socket.js";
 import User from "../../../models/user.model.js";
+import cloudinary from "../../../config/cloudinary.js";
+
+
+/**
+ * Upload image buffer to Cloudinary.
+ * Returns the Cloudinary upload result (contains secure_url, public_id, etc.)
+ */
+const uploadToCloudinary = (fileBuffer, mimetype) => {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        folder: "zunozo/events",
+        resource_type: "image",
+        allowed_formats: ["jpg", "jpeg", "png", "webp"],
+      },
+      (error, result) => {
+        if (error) return reject(error);
+        resolve(result);
+      }
+    );
+    stream.end(fileBuffer);
+  });
+};
 
 
 export const createEvent = async (req, res) => {
@@ -13,6 +36,23 @@ export const createEvent = async (req, res) => {
 
     // Get organizer id from authenticated user
     const organizerId = req.user._id;
+
+    // Handle image upload to Cloudinary if file was provided
+    if (req.file) {
+      try {
+        const uploadResult = await uploadToCloudinary(
+          req.file.buffer,
+          req.file.mimetype
+        );
+        eventData.coverImage = uploadResult.secure_url;
+      } catch (uploadError) {
+        console.error("Cloudinary Upload Error:", uploadError);
+        return res.status(500).json({
+          success: false,
+          message: "Unable to upload event image. Please try again.",
+        });
+      }
+    }
 
     // Generate unique slug
     const slug = await generateSlug(eventData.title);
@@ -53,6 +93,14 @@ export const createEvent = async (req, res) => {
     });
   } catch (error) {
     console.error("Create Event Error:", error);
+
+    // Handle multer errors
+    if (error.code === "LIMIT_FILE_SIZE") {
+      return res.status(400).json({
+        success: false,
+        message: "Image file is too large. Maximum size is 5MB.",
+      });
+    }
 
     return res.status(500).json({
       success: false,
@@ -146,6 +194,23 @@ export const updateEvent = async (req,res) => {
       });
     }
 
+    // Handle image upload to Cloudinary if new file was provided
+    if (req.file) {
+      try {
+        const uploadResult = await uploadToCloudinary(
+          req.file.buffer,
+          req.file.mimetype
+        );
+        updateData.coverImage = uploadResult.secure_url;
+      } catch (uploadError) {
+        console.error("Cloudinary Upload Error:", uploadError);
+        return res.status(500).json({
+          success: false,
+          message: "Unable to upload event image. Please try again.",
+        });
+      }
+    }
+
      const oldSlug = event.slug;
 
     // Generate new slug if title changes
@@ -180,6 +245,13 @@ export const updateEvent = async (req,res) => {
         
     } catch (error) {
         console.error("Update Event Error:", error);
+
+        if (error.code === "LIMIT_FILE_SIZE") {
+          return res.status(400).json({
+            success: false,
+            message: "Image file is too large. Maximum size is 5MB.",
+          });
+        }
 
         return res.status(500).json({
           success: false,
