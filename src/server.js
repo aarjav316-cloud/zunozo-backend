@@ -92,9 +92,12 @@ const startServer = async () => {
       console.log(`Server running on ${PORT}`);
     });
   } catch (error) {
-    console.error("Failed to start server:");
-    console.error(error);
-    process.exit(1);
+    const msg = `\n[FATAL] Failed to start server:\n${error.stack || error}\n`;
+    process.stderr.write(msg, () => {
+      process.exit(1);
+    });
+    // Fallback in case flush callback never fires
+    setTimeout(() => process.exit(1), 3000);
   }
 };
 

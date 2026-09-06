@@ -4,7 +4,7 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "start": "node src/server.js",
+    "start": "node -r ./src/bootstrap.cjs src/server.js",
     "dev": "nodemon src/server.js"
   },
   "keywords": [],

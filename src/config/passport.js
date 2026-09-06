@@ -3,8 +3,6 @@ import {Strategy as GoogleStrategy} from "passport-google-oauth20"
 
 import User from "../models/user.model.js";
 
-        console.log(process.env.GOOGLE_CLIENT_ID);
-        console.log(process.env.GOOGLE_CLIENT_SECRET);
 
 
 passport.use(

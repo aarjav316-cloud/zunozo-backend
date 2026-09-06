@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import mongoose from "mongoose";
 
-import razorpay from "../../../config/razorpay.js";
+import getRazorpay from "../../../config/razorpay.js";
 
 import Event from "../../event/models/event.model.js";
 import Payment from "../model/payment.model.js";
@@ -192,7 +192,7 @@ export const createOrder = async ({ eventId, quantity, userId }) => {
   let razorpayOrder;
 
   try {
-    razorpayOrder = await razorpay.orders.create({
+    razorpayOrder = await getRazorpay().orders.create({
       amount: amountInPaise,
       currency: "INR",
       receipt,
