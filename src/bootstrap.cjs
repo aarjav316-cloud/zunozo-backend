@@ -13,7 +13,6 @@ process.on("uncaughtException", (err) => {
   console.log("[FATAL] Uncaught Exception:");
   console.log(err.stack || err.message || err);
   console.log("========================================\n");
-  // Give stdout time to flush before exiting
   setTimeout(() => process.exit(1), 500);
 });
 
@@ -30,16 +29,25 @@ process.on("unhandledRejection", (reason) => {
   setTimeout(() => process.exit(1), 500);
 });
 
+// Detect external signals (Render may be sending SIGTERM)
+process.on("SIGTERM", () => {
+  console.log("[SIGNAL] Received SIGTERM — process being killed externally");
+  process.exit(143);
+});
+
+process.on("SIGINT", () => {
+  console.log("[SIGNAL] Received SIGINT");
+  process.exit(130);
+});
+
 // This fires on ANY exit, including process.exit() calls
 process.on("exit", (code) => {
-  if (code !== 0) {
-    // Use process.stdout.write which is SYNCHRONOUS inside 'exit' handler
-    process.stdout.write(`\n[EXIT] Process exiting with code: ${code}\n`);
-    if (fatalError) {
-      const msg = fatalError.stack || fatalError.message || String(fatalError);
-      process.stdout.write(`[EXIT] Last fatal error: ${msg}\n`);
-    }
+  // Use process.stdout.write which is SYNCHRONOUS inside 'exit' handler
+  process.stdout.write(`[EXIT] Process exiting with code: ${code}\n`);
+  if (fatalError) {
+    const msg = fatalError.stack || fatalError.message || String(fatalError);
+    process.stdout.write(`[EXIT] Last fatal error: ${msg}\n`);
   }
 });
 
-console.log("[BOOTSTRAP] Error handlers registered");
+console.log("[BOOTSTRAP] Error handlers registered (Node " + process.version + ")");
