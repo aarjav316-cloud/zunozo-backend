@@ -83,21 +83,29 @@ app.get("/", (req, res) => {
 
 const PORT = process.env.PORT || 5000;
 
+console.log("[STARTUP] Beginning server initialization...");
+console.log("[STARTUP] PORT:", PORT);
+
 const startServer = async () => {
   try {
+    console.log("[STARTUP] Connecting to MongoDB...");
     await connectDb();
+    console.log("[STARTUP] MongoDB connected successfully");
+
+    console.log("[STARTUP] Connecting to Redis...");
     await connectRedis();
+    console.log("[STARTUP] Redis connected successfully");
 
     httpServer.listen(PORT, () => {
-      console.log(`Server running on ${PORT}`);
+      console.log(`[STARTUP] Server running on ${PORT}`);
     });
   } catch (error) {
-    const msg = `\n[FATAL] Failed to start server:\n${error.stack || error}\n`;
-    process.stderr.write(msg, () => {
-      process.exit(1);
-    });
-    // Fallback in case flush callback never fires
-    setTimeout(() => process.exit(1), 3000);
+    console.log("\n========================================");
+    console.log("[FATAL] Failed to start server:");
+    console.log(error.stack || error.message || error);
+    console.log("========================================\n");
+    // Give stdout time to flush before exiting
+    setTimeout(() => process.exit(1), 500);
   }
 };
 
