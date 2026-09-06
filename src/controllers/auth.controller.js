@@ -147,8 +147,8 @@ export const verifyOTP = async (req, res) => {
 
     const cookieOptions = {
       httpOnly: true,
-      secure: false,
-      sameSite: "strict",
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
     };
 
     res.cookie("accessToken", accessToken, {
@@ -277,8 +277,8 @@ export const login = async (req, res) => {
 
     const cookieOptions = {
       httpOnly: true,
-      secure: false,
-      sameSite: "strict",
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
     };
 
     res.cookie("accessToken", accessToken, {
@@ -377,17 +377,19 @@ export const refreshAccessToken = async (req, res) => {
       validateBeforeSave: false,
     });
 
-    res.cookie("accessToken", newAccessToken, {
+    const cookieOptions = {
       httpOnly: true,
-      secure: false,
-      sameSite: "strict",
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+    };
+
+    res.cookie("accessToken", newAccessToken, {
+      ...cookieOptions,
       maxAge: 15 * 60 * 1000,
     });
 
     res.cookie("refreshToken", newRefreshToken, {
-      httpOnly: true,
-      secure: false,
-      sameSite: "strict",
+      ...cookieOptions,
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
@@ -451,8 +453,8 @@ export const googleCallback = async (req, res) => {
 
     const cookieOptions = {
       httpOnly: true,
-      secure: false,
-      sameSite: "strict",
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
     };
 
     res.cookie("accessToken", accessToken, {
@@ -465,7 +467,7 @@ export const googleCallback = async (req, res) => {
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
-    return res.redirect("http://localhost:5173/");
+    return res.redirect(process.env.CLIENT_URL || "http://localhost:5173/");
   } catch (error) {
     console.log(error);
 

@@ -29,7 +29,7 @@ initSocket(httpServer);
 
 app.use(
   cors({
-    origin: "http://localhost:5173",
+    origin: process.env.CLIENT_URL || "http://localhost:5173",
     credentials: true,
   }),
 );
@@ -92,7 +92,9 @@ const startServer = async () => {
       console.log(`Server running on ${PORT}`);
     });
   } catch (error) {
-    console.log(error);
+    console.error("Failed to start server:");
+    console.error(error);
+    process.exit(1);
   }
 };
 
