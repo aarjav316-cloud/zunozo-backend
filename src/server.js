@@ -27,9 +27,23 @@ const httpServer = createServer(app);
 
 initSocket(httpServer);
 
+const allowedOrigins = [
+  process.env.CLIENT_URL,
+  "http://localhost:5173",
+  "http://localhost:5174",
+];
+
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || "http://localhost:5173",
+    origin: function (origin, callback) {
+      // Allow requests with no origin (mobile apps, curl, etc.)
+      if (!origin) return callback(null, true);
+      // Allow exact matches (production URL + localhost)
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      // Allow all Vercel preview deployments for this project
+      if (/\.vercel\.app$/.test(origin)) return callback(null, true);
+      callback(new Error("Not allowed by CORS"));
+    },
     credentials: true,
   }),
 );

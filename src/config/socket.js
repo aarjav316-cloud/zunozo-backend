@@ -21,7 +21,18 @@ const parseCookies = (cookieHeader) => {
 export const initSocket = (httpServer) => {
   io = new Server(httpServer, {
     cors: {
-      origin: process.env.CLIENT_URL || "http://localhost:5173",
+      origin: function (origin, callback) {
+        if (!origin) return callback(null, true);
+        const allowed = [
+          process.env.CLIENT_URL,
+          "http://localhost:5173",
+          "http://localhost:5174",
+        ];
+        if (allowed.includes(origin) || /\.vercel\.app$/.test(origin)) {
+          return callback(null, true);
+        }
+        callback(new Error("Not allowed by CORS"));
+      },
       credentials: true,
     },
   });
