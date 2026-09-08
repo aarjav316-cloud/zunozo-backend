@@ -9,6 +9,8 @@ import {
 // ==========================
 // Helper: Set fresh auth cookies after role change
 // ==========================
+const isProduction = process.env.NODE_ENV === "production";
+
 const setAuthCookies = (res, user) => {
   const accessToken = generateAccessToken(user);
   const refreshToken = generateRefreshToken(user);
@@ -17,8 +19,9 @@ const setAuthCookies = (res, user) => {
 
   const cookieOptions = {
     httpOnly: true,
-    secure: false,
-    sameSite: "strict",
+    secure: isProduction,
+    sameSite: isProduction ? "none" : "strict",
+    ...(isProduction && { partitioned: true }),
   };
 
   res.cookie("accessToken", accessToken, {

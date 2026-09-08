@@ -10,6 +10,15 @@ import {
   generateRefreshToken,
 } from "../utils/generateToken.js";
 
+// Shared cookie options for cross-site production deployment
+const isProduction = process.env.NODE_ENV === "production";
+const baseCookieOptions = {
+  httpOnly: true,
+  secure: isProduction,
+  sameSite: isProduction ? "none" : "strict",
+  ...(isProduction && { partitioned: true }),
+};
+
 export const register = async (req, res) => {
   try {
     const { name, email, password } = req.body;
@@ -145,11 +154,7 @@ export const verifyOTP = async (req, res) => {
       validateBeforeSave: false,
     });
 
-    const cookieOptions = {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
-    };
+    const cookieOptions = baseCookieOptions;
 
     res.cookie("accessToken", accessToken, {
       ...cookieOptions,
@@ -275,11 +280,7 @@ export const login = async (req, res) => {
       validateBeforeSave: false,
     });
 
-    const cookieOptions = {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
-    };
+    const cookieOptions = baseCookieOptions;
 
     res.cookie("accessToken", accessToken, {
       ...cookieOptions,
@@ -328,8 +329,8 @@ export const logout = async (req, res) => {
       validateBeforeSave: false,
     });
 
-    res.clearCookie("accessToken");
-    res.clearCookie("refreshToken");
+    res.clearCookie("accessToken", baseCookieOptions);
+    res.clearCookie("refreshToken", baseCookieOptions);
 
     return res.status(200).json({
       success: true,
@@ -377,11 +378,7 @@ export const refreshAccessToken = async (req, res) => {
       validateBeforeSave: false,
     });
 
-    const cookieOptions = {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
-    };
+    const cookieOptions = baseCookieOptions;
 
     res.cookie("accessToken", newAccessToken, {
       ...cookieOptions,
@@ -451,11 +448,7 @@ export const googleCallback = async (req, res) => {
       validateBeforeSave: false,
     });
 
-    const cookieOptions = {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
-    };
+    const cookieOptions = baseCookieOptions;
 
     res.cookie("accessToken", accessToken, {
       ...cookieOptions,
@@ -623,9 +616,9 @@ export const changePassword = async (req, res) => {
       validateBeforeSave: false,
     });
 
-    res.clearCookie("accessToken");
+    res.clearCookie("accessToken", baseCookieOptions);
 
-    res.clearCookie("refreshToken");
+    res.clearCookie("refreshToken", baseCookieOptions);
 
     return res.status(200).json({
       success: true,
@@ -671,8 +664,8 @@ export const deleteAccount = async (req, res) => {
       validateBeforeSave: false,
     });
 
-    res.clearCookie("accessToken");
-    res.clearCookie("refreshToken");
+    res.clearCookie("accessToken", baseCookieOptions);
+    res.clearCookie("refreshToken", baseCookieOptions);
 
     return res.status(200).json({
       success: true,
