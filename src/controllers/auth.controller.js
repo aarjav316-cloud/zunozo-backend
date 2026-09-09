@@ -432,10 +432,8 @@ export const googleCallback = async (req, res) => {
     const user = req.user;
 
     if (!user || user.isDeleted) {
-      return res.status(403).json({
-        success: false,
-        message: "this account has been deleted",
-      });
+      const clientUrl = process.env.CLIENT_URL || "http://localhost:5173";
+      return res.redirect(`${clientUrl}/signin?error=account_deleted`);
     }
 
     const accessToken = generateAccessToken(user);
@@ -447,6 +445,34 @@ export const googleCallback = async (req, res) => {
     await user.save({
       validateBeforeSave: false,
     });
+
+    // Pass tokens via URL so the frontend can store them through its own
+    // cross-site request, ensuring cookies land in the correct partition.
+    const clientUrl = process.env.CLIENT_URL || "http://localhost:5173";
+    return res.redirect(
+      `${clientUrl}/auth/google/callback?accessToken=${accessToken}&refreshToken=${refreshToken}`
+    );
+  } catch (error) {
+    console.log(error);
+
+    const clientUrl = process.env.CLIENT_URL || "http://localhost:5173";
+    return res.redirect(`${clientUrl}/signin?error=server_error`);
+  }
+};
+
+// Called by the frontend after Google OAuth redirect to store tokens as cookies.
+// Because this is an AJAX call from vercel.app → onrender.com, the cookies are
+// stored in the correct third-party partition (unlike direct navigation cookies).
+export const setTokenCookies = async (req, res) => {
+  try {
+    const { accessToken, refreshToken } = req.body;
+
+    if (!accessToken || !refreshToken) {
+      return res.status(400).json({
+        success: false,
+        message: "Tokens are required",
+      });
+    }
 
     const cookieOptions = baseCookieOptions;
 
@@ -460,7 +486,10 @@ export const googleCallback = async (req, res) => {
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
-    return res.redirect(process.env.CLIENT_URL || "http://localhost:5173/");
+    return res.status(200).json({
+      success: true,
+      message: "Tokens stored",
+    });
   } catch (error) {
     console.log(error);
 

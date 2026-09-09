@@ -11,6 +11,7 @@ import {
   register,
   resendOTP,
   resetPassword,
+  setTokenCookies,
   updateProfile,
   verifyOTP,
 } from "../controllers/auth.controller.js";
@@ -67,5 +68,7 @@ router.get(
 );
 
 router.get("/me", protect, getMe);
+
+router.post("/set-token-cookies", setTokenCookies);
 
 export default router;
