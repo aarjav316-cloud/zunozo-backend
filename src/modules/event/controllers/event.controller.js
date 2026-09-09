@@ -401,17 +401,21 @@ export const getApprovedEvents = async (req,res) => {
         const cachedEvents = await getApprovedEventsCache()
 
          if (cachedEvents) {
+           // Filter out past events from cached results
+           const now = new Date();
+           const upcoming = cachedEvents.filter(e => new Date(e.startDate) > now);
            return res.status(200).json({
              success: true,
              source: "redis",
-             count: cachedEvents.length,
-             events: cachedEvents,
+             count: upcoming.length,
+             events: upcoming,
            });
          }   
 
         const events = await Event.find({
             status:"APPROVED",
             isDeleted:false,
+            startDate: { $gt: new Date() },
         })
           .select(
              "title slug shortDescription coverImage category startDate endDate venue capacity isFree price"
@@ -446,6 +450,13 @@ export const getEventsBySlug = async (req,res) => {
       const cachedEvent = await getEventCache(slug);
 
       if (cachedEvent) {
+        // Check if cached event has already started
+        if (new Date(cachedEvent.startDate) <= new Date()) {
+          return res.status(404).json({
+            success: false,
+            message: "Event not found.",
+          });
+        }
         return res.status(200).json({
           success: true,
           source: "redis",
@@ -457,6 +468,7 @@ export const getEventsBySlug = async (req,res) => {
         slug,
         status: "APPROVED",
         isDeleted: false,
+        startDate: { $gt: new Date() },
       }).populate("organizer", "fullname email");
   
       if (!event) {
@@ -509,6 +521,7 @@ export const searchEvents = async (req, res) => {
         $match: {
           status: "APPROVED",
           isDeleted: false,
+          startDate: { $gt: new Date() },
         },
       },
       // Stage 2: Lookup organizer from Users collection
